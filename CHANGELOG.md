@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.0] - 2026-05-30
+
+### Added
+- Filament admin resources for **Filament v3, v4, and v5**, shipped as three
+  parallel resource sets under `src/Filament/V{3,4,5}/` plus a version-dispatching
+  `MediaLibraryPlugin::make()` facade that resolves the right set from the
+  installed Filament major.
+  - **MediaLibraryItemResource** — metadata-only edit form (per-locale
+    title/alt/caption/description Tabs, focal-point numeric inputs, folder + tags
+    selects, read-only file details + file URL). Table: title, MIME badge, human
+    byte size, folder, view/download counts, created_at; MIME + folder filters.
+    List + edit pages (items arrive via the facade).
+  - **MediaLibraryFolderResource** — per-locale name/description, parent select,
+    visibility select, position. Table: name, path, visibility badge, item_count,
+    parent.
+  - **MediaLibraryTagResource** — per-locale name + colour picker + position.
+  - **ShareLinkResource** — read-mostly list + view with a row-level Revoke
+    action; no create/edit (links are created through the facade).
+- Per-Filament-version PHPStan configs (`phpstan-filament-v{3,4,5}.neon`); the
+  base config excludes all three version dirs + the facade.
+- CI matrix Filament axis (`3.* / 4.* / 5.*`) running Pint, the matching
+  per-major PHPStan config, and Pest per cell.
+- Version-guarded Filament smoke tests (`tests/Feature/Filament/V{3,4,5}/`); only
+  the installed major's suite runs.
+
 ## [1.0.1] - 2026-05-30
 
 ### Fixed

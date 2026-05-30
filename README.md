@@ -32,7 +32,38 @@ php artisan migrate
 
 ## Filament admin
 
-Filament v3/v4/v5 admin (WordPress-style grid + edit modal) lands in v1.1.
+The package ships admin resources for **Filament v3, v4, and v5**. Register the
+version-dispatching plugin on your panel — the correct resource set is resolved
+from the installed Filament major automatically:
+
+```php
+use Kurt\Modules\MediaLibrary\Filament\MediaLibraryPlugin;
+
+public function panel(Panel $panel): Panel
+{
+    return $panel
+        // ...
+        ->plugin(MediaLibraryPlugin::make());
+}
+```
+
+This registers four resources:
+
+- **MediaLibraryItemResource** — metadata editing (per-locale title / alt text /
+  caption / description, focal-point inputs, folder + tags) with a read-only file
+  preview. Items are uploaded via the `MediaLibrary` facade, so the admin form
+  edits metadata rather than re-uploading; the file URL is shown for reference.
+  Table: title, MIME type, human-readable size, folder, view/download counts;
+  filterable by MIME type and folder.
+- **MediaLibraryFolderResource** — per-locale name/description, parent folder,
+  visibility, position. Table: name, path, visibility badge, item count.
+- **MediaLibraryTagResource** — per-locale name + colour.
+- **ShareLinkResource** — read-only list of share links (token, target,
+  abilities, expiry, access count) with a row-level **Revoke** action. Links are
+  created through the facade.
+
+`filament/filament` is a dev dependency only; the resources load lazily for
+whichever major the consuming app installs.
 
 ## License
 
