@@ -1,14 +1,23 @@
 <?php
 
 declare(strict_types=1);
+use Kurt\Modules\MediaLibrary\Access\Support\DefaultSubjectResolver;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryAttachment;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryTag;
+use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
+use Kurt\Modules\MediaLibrary\Storage\Extractors\DefaultExifExtractor;
+use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator;
+use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor;
 
 return [
-    'subject_resolver' => Kurt\Modules\MediaLibrary\Access\Support\DefaultSubjectResolver::class,
+    'subject_resolver' => DefaultSubjectResolver::class,
 
     'contracts' => [
-        'exif' => Kurt\Modules\MediaLibrary\Storage\Extractors\DefaultExifExtractor::class,
-        'blurhash' => Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator::class,
-        'palette' => Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor::class,
+        'exif' => DefaultExifExtractor::class,
+        'blurhash' => InterventionBlurhashGenerator::class,
+        'palette' => InterventionPaletteExtractor::class,
         'ocr' => null,
         'ai_tagger' => null,
         'scout' => null,
@@ -59,10 +68,10 @@ return [
     ],
 
     'models' => [
-        'item' => Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem::class,
-        'folder' => Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder::class,
-        'tag' => Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryTag::class,
-        'attachment' => Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryAttachment::class,
-        'share_link' => Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink::class,
+        'item' => MediaLibraryItem::class,
+        'folder' => MediaLibraryFolder::class,
+        'tag' => MediaLibraryTag::class,
+        'attachment' => MediaLibraryAttachment::class,
+        'share_link' => ShareLink::class,
     ],
 ];

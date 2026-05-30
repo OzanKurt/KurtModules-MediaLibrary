@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Kurt\Modules\MediaLibrary\Tests;
 
+use Illuminate\Foundation\Application;
 use Kurt\Modules\Core\Providers\CoreServiceProvider;
 use Kurt\Modules\Core\Testing\PackageTestCase;
 
 abstract class TestCase extends PackageTestCase
 {
     /**
-     * @param  \Illuminate\Foundation\Application  $app
+     * @param  Application  $app
      * @return array<int, class-string>
      */
     protected function getPackageProviders($app): array
