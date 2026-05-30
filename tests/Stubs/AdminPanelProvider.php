@@ -1,0 +1,27 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Kurt\Modules\MediaLibrary\Tests\Stubs;
+
+use Filament\Panel;
+use Filament\PanelProvider;
+use Kurt\Modules\MediaLibrary\Filament\MediaLibraryPlugin;
+
+/**
+ * Minimal Filament panel used by the resource smoke tests. It registers the
+ * version-dispatching Media Library plugin so the correct V{n} resource set is
+ * wired up for whichever Filament major is installed in the current CI matrix
+ * cell.
+ */
+final class AdminPanelProvider extends PanelProvider
+{
+    public function panel(Panel $panel): Panel
+    {
+        return $panel
+            ->id('admin')
+            ->path('admin')
+            ->default()
+            ->plugin(MediaLibraryPlugin::make());
+    }
+}
