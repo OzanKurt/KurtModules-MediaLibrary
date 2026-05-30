@@ -35,9 +35,41 @@ it('returns [Everyone, User($id)] when a user is provided', function (): void {
 });
 
 it('throws OwnerNotResolved when defaultOwner receives a non-MediaLibraryOwner user', function (): void {
-    $user = new StubUser;
-    $user->setRawAttributes(['id' => 42], sync: true);
-    $user->exists = true;
+    // Anonymous Authenticatable that does NOT implement MediaLibraryOwner.
+    $user = new class implements Authenticatable
+    {
+        public function getAuthIdentifierName(): string
+        {
+            return 'id';
+        }
+
+        public function getAuthIdentifier(): mixed
+        {
+            return 42;
+        }
+
+        public function getAuthPasswordName(): string
+        {
+            return 'password';
+        }
+
+        public function getAuthPassword(): string
+        {
+            return '';
+        }
+
+        public function getRememberToken(): string
+        {
+            return '';
+        }
+
+        public function setRememberToken($value): void {}
+
+        public function getRememberTokenName(): string
+        {
+            return '';
+        }
+    };
 
     $resolver = new DefaultSubjectResolver;
 
