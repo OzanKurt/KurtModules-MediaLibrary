@@ -20,7 +20,7 @@ use Illuminate\Support\Carbon;
 use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryVariant;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryVersion;
-use RuntimeException;
+use Kurt\Modules\MediaLibrary\Storage\Support\VariantGenerator;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\Translatable\HasTranslations;
 
@@ -212,33 +212,11 @@ class MediaLibraryItem extends Model
     /**
      * Generate (or fetch from cache) an ad-hoc focal-point-aware variant.
      *
-     * Wired in Task 15 when the VariantGenerator support class lands. The
-     * generator class string is resolved by FQCN so this file does not import
-     * a class that does not yet exist.
-     *
      * @param  array<string, mixed>  $spec
      */
     public function variant(array $spec): MediaLibraryVariant
     {
-        $generatorClass = 'Kurt\\Modules\\MediaLibrary\\Storage\\Support\\VariantGenerator';
-
-        if (! app()->bound($generatorClass)) {
-            throw new RuntimeException('VariantGenerator not yet bound');
-        }
-
-        $generator = app($generatorClass);
-
-        if (! is_object($generator) || ! method_exists($generator, 'generateOrFetch')) {
-            throw new RuntimeException('VariantGenerator binding is invalid');
-        }
-
-        $variant = $generator->generateOrFetch($this, $spec);
-
-        if (! $variant instanceof MediaLibraryVariant) {
-            throw new RuntimeException('VariantGenerator did not return a MediaLibraryVariant');
-        }
-
-        return $variant;
+        return app(VariantGenerator::class)->generateOrFetch($this, $spec);
     }
 
     /**

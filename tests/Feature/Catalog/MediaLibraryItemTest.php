@@ -54,11 +54,14 @@ it('url returns empty string when no spatie media attached', function () {
     expect($item->spatieMedia())->toBeNull();
 });
 
-it('variant() throws RuntimeException while VariantGenerator is unbound', function () {
+it('variant() delegates to the bound VariantGenerator', function () {
     $item = MediaLibraryItem::factory()->create();
 
+    // The item has no spatie media attached (factory does not attach one),
+    // so the underlying generator surfaces a RuntimeException. That is
+    // sufficient evidence the delegation happens via app(VariantGenerator).
     expect(fn () => $item->variant(['width' => 100, 'height' => 100]))
-        ->toThrow(RuntimeException::class, 'VariantGenerator not yet bound');
+        ->toThrow(RuntimeException::class, 'item has no source media');
 });
 
 it('activeShares returns only non-revoked + not-yet-expired links', function () {
