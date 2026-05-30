@@ -7,15 +7,9 @@ use Kurt\Modules\MediaLibrary\Catalog\Events\ItemDeleted;
 use Kurt\Modules\MediaLibrary\Catalog\Events\ItemRestored;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
-use Kurt\Modules\MediaLibrary\Catalog\Observers\MediaLibraryItemObserver;
 
-beforeEach(function (): void {
-    MediaLibraryItem::observe(MediaLibraryItemObserver::class);
-});
-
-afterEach(function (): void {
-    MediaLibraryItem::flushEventListeners();
-});
+// The provider now registers MediaLibraryItemObserver globally — re-registering
+// here would fire side-effects (item_count adjustments) twice.
 
 it('decrements folder item_count when an item is soft-deleted', function (): void {
     $folder = MediaLibraryFolder::factory()->create(['item_count' => 5]);
