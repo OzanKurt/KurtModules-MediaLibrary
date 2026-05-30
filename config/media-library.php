@@ -52,6 +52,15 @@ return [
         'share_prefix' => 'media-library/share',
     ],
 
+    'share_links' => [
+        'prune_after_days' => 30,
+    ],
+
+    'notifications' => [
+        'enabled' => false,
+        'channels' => ['mail', 'database'],
+    ],
+
     'extractors' => [
         'sync' => ['dimensions', 'palette', 'blurhash'],   // run in request
         'async' => ['exif', 'ai_tagger', 'ocr'],            // dispatched as jobs
