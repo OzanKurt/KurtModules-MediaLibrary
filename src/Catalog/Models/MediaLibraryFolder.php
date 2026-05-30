@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Kurt\Modules\MediaLibrary\Access\Models\FolderPermission;
 use Kurt\Modules\MediaLibrary\Catalog\Enums\Visibility;
 use Spatie\Translatable\HasTranslations;
 
@@ -113,6 +114,14 @@ class MediaLibraryFolder extends Model
     public function items(): HasMany
     {
         return $this->hasMany(MediaLibraryItem::class, 'folder_id');
+    }
+
+    /**
+     * @return HasMany<FolderPermission, $this>
+     */
+    public function permissions(): HasMany
+    {
+        return $this->hasMany(FolderPermission::class, 'folder_id');
     }
 
     protected static function newFactory(): MediaLibraryFolderFactory
