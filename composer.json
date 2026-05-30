@@ -1,0 +1,50 @@
+{
+  "name": "ozankurt/laravel-modules-media-library",
+  "description": "WordPress-style media bucket for Laravel SaaS: tenant-aware folders, polymorphic attachments, focal-point conversions, replace-with-stable-id, share links, folder ACL.",
+  "keywords": ["laravel", "filament", "kurtmodules", "media-library", "wordpress"],
+  "license": "MIT",
+  "authors": [{ "name": "Ozan Kurt", "email": "ozankurt2@gmail.com" }],
+  "require": {
+    "php": "^8.4",
+    "illuminate/contracts": "^12.0 || ^13.0",
+    "illuminate/database": "^12.0 || ^13.0",
+    "illuminate/support": "^12.0 || ^13.0",
+    "cviebrock/eloquent-sluggable": "^11.0 || ^12.0",
+    "intervention/image": "^3.0",
+    "ozankurt/laravel-modules-core": "^2.0",
+    "spatie/laravel-medialibrary": "^11.0",
+    "spatie/laravel-package-tools": "^1.92",
+    "spatie/laravel-translatable": "^6.11"
+  },
+  "require-dev": {
+    "filament/filament": "^3.0 || ^4.0 || ^5.0",
+    "kornrunner/blurhash": "^1.0",
+    "larastan/larastan": "^3.0",
+    "laravel/pint": "^1.18",
+    "mockery/mockery": "^1.6",
+    "orchestra/testbench": "^10.0",
+    "pestphp/pest": "^3.0",
+    "pestphp/pest-plugin-laravel": "^3.0",
+    "rector/rector": "^2.0"
+  },
+  "autoload": { "psr-4": { "Kurt\\Modules\\MediaLibrary\\": "src/" } },
+  "autoload-dev": {
+    "psr-4": {
+      "Kurt\\Modules\\MediaLibrary\\Tests\\": "tests/",
+      "Database\\Factories\\Kurt\\Modules\\MediaLibrary\\": "database/factories/"
+    }
+  },
+  "extra": { "laravel": { "providers": ["Kurt\\Modules\\MediaLibrary\\Providers\\MediaLibraryServiceProvider"] } },
+  "repositories": [
+    { "type": "vcs", "url": "https://github.com/OzanKurt/KurtModules-Core" }
+  ],
+  "config": { "sort-packages": true, "allow-plugins": { "pestphp/pest-plugin": true } },
+  "scripts": {
+    "test": "vendor/bin/pest",
+    "lint": "vendor/bin/pint --test",
+    "format": "vendor/bin/pint",
+    "stan": "vendor/bin/phpstan analyse --memory-limit=2G"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
