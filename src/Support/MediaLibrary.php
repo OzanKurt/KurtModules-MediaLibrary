@@ -115,11 +115,21 @@ final class MediaLibrary
             throw new SelfReferentialFolder('Cannot move a folder onto itself');
         }
 
+        // Guard against moving a folder into its own descendant (would orphan the subtree).
+        if ($newParent !== null && str_starts_with((string) $newParent->path, (string) $folder->path.'/')) {
+            throw new SelfReferentialFolder('Cannot move a folder into its own descendant');
+        }
+
         $oldParentId = $folder->parent_id;
         $folder->parent_id = $newParent?->id;
-        $folder->path = ($newParent === null ? '' : $newParent->path).'/'.$folder->slug;
-        $folder->depth = ($newParent === null ? -1 : $newParent->depth) + 1;
         $folder->save();
+
+        // Recompute this node + entire subtree so descendant paths/depths
+        // are never left pointing at the old location. rebuildSubtree() writes
+        // the new path/depth back onto $folder in memory, so it is up to date.
+        $parentPath = $newParent === null ? '' : $newParent->path;
+        $parentDepth = $newParent === null ? -1 : $newParent->depth;
+        $this->rebuildSubtree($folder, $parentPath, $parentDepth + 1);
 
         FolderMoved::dispatch($folder, $oldParentId, $newParent?->id);
 
@@ -400,7 +410,9 @@ final class MediaLibrary
         ])->save();
 
         $count = 1;
-        foreach ($folder->children as $child) {
+        // Re-query children rather than reusing a cached relation so that a
+        // freshly-moved subtree is traversed against current parent_id values.
+        foreach ($folder->children()->get() as $child) {
             $count += $this->rebuildSubtree($child, $folder->path, $depth + 1);
         }
 

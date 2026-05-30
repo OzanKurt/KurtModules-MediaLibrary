@@ -60,21 +60,7 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
             ->hasConfigFile('media-library')
             ->hasTranslations()
             ->hasViews('media-library')
-            ->hasMigrations([
-                'create_media_library_folders_table',
-                'create_media_library_storage_table',
-                'create_media_library_items_table',
-                'create_media_library_tags_table',
-                'create_media_library_item_tag_table',
-                'create_media_library_attachments_table',
-                'create_media_library_saved_searches_table',
-                'create_media_library_versions_table',
-                'create_media_library_variants_table',
-                'create_media_library_pending_uploads_table',
-                'create_media_library_share_links_table',
-                'create_media_library_access_log_table',
-                'create_media_library_folder_permissions_table',
-            ])
+            ->discoversMigrations()
             ->hasCommands([
                 PruneVersionsCommand::class,
                 PruneVariantsCommand::class,
