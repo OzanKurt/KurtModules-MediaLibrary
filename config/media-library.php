@@ -62,6 +62,16 @@ return [
         'prune_after_days' => 30,
     ],
 
+    'shares' => [
+        // Share links are bearer credentials: by default anyone holding a valid,
+        // unexpired, un-revoked token may access the target, and `invitee_email`
+        // is purely decorative (it records who the link was sent to). Flip this
+        // to `true` to require the requester to be authenticated as the named
+        // invitee before a link that sets `invitee_email` will resolve. Links
+        // with a null `invitee_email` stay bearer regardless of this flag.
+        'enforce_invitee' => env('MEDIA_LIBRARY_ENFORCE_INVITEE', false),
+    ],
+
     'notifications' => [
         'enabled' => false,
         'channels' => ['mail', 'database'],

@@ -23,6 +23,26 @@ final class ShareLinkController
     public function show(string $token, Request $request): Response
     {
         $link = $this->resolver->resolve($token);
+
+        /** @var Model|null $user */
+        $user = $request->user();
+
+        // Share links are BEARER credentials: by default anyone holding a valid,
+        // unexpired, un-revoked token may access the target, regardless of who
+        // (if anyone) they are authenticated as. `invitee_email` only records who
+        // the link was sent to; it is not enforced unless the operator opts in via
+        // `media-library.shares.enforce_invitee`. With enforcement on, a link that
+        // names an invitee requires the requester to be authenticated as that
+        // email address (case-insensitive); unauthenticated or mismatched
+        // requesters are denied. Links with a null invitee_email stay bearer.
+        if (config('media-library.shares.enforce_invitee', false) && $link->invitee_email !== null) {
+            $email = $user?->getAttribute('email');
+
+            if (! is_string($email) || strcasecmp($email, $link->invitee_email) !== 0) {
+                abort(403, 'invitee_mismatch');
+            }
+        }
+
         $abilities = $link->abilities;
         $requested = $request->query('download') !== null ? 'download' : 'view';
 
@@ -35,9 +55,6 @@ final class ShareLinkController
             'last_accessed_at' => now(),
             'last_accessed_ip' => $request->ip(),
         ])->save();
-
-        /** @var Model|null $user */
-        $user = $request->user();
 
         $this->logger->log($link->item, $link, $user, AccessAction::from($requested));
 
