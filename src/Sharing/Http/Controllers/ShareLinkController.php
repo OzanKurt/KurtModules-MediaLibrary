@@ -6,10 +6,11 @@ namespace Kurt\Modules\MediaLibrary\Sharing\Http\Controllers;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Kurt\Modules\MediaLibrary\Sharing\Enums\AccessAction;
 use Kurt\Modules\MediaLibrary\Sharing\Support\AccessLogger;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkResolver;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 final class ShareLinkController
@@ -19,7 +20,7 @@ final class ShareLinkController
         private readonly AccessLogger $logger,
     ) {}
 
-    public function show(string $token, Request $request): BinaryFileResponse
+    public function show(string $token, Request $request): Response
     {
         $link = $this->resolver->resolve($token);
         $abilities = $link->abilities;
@@ -45,10 +46,26 @@ final class ShareLinkController
             abort(410, 'media_gone');
         }
 
-        $path = $media->getPath();
+        $diskName = (string) $media->disk;
+        $isDownload = $requested === 'download';
 
-        return $requested === 'download'
-            ? response()->download($path, $media->file_name, [], ResponseHeaderBag::DISPOSITION_ATTACHMENT)
-            : response()->file($path);
+        // Local disks expose an absolute filesystem path we can hand straight
+        // to Symfony's file/download responses. Remote disks (s3, etc.) have no
+        // such path, so stream the object through the disk's own response()/
+        // download() helpers instead of calling getPath() (which throws).
+        if (config("filesystems.disks.{$diskName}.driver") === 'local') {
+            $path = $media->getPath();
+
+            return $isDownload
+                ? response()->download($path, $media->file_name, [], ResponseHeaderBag::DISPOSITION_ATTACHMENT)
+                : response()->file($path);
+        }
+
+        $relativePath = $media->getPathRelativeToRoot();
+        $filesystem = Storage::disk($diskName);
+
+        return $isDownload
+            ? $filesystem->download($relativePath, $media->file_name)
+            : $filesystem->response($relativePath, $media->file_name);
     }
 }

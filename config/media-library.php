@@ -24,7 +24,13 @@ return [
     ],
 
     'uploads' => [
-        'disk' => env('MEDIA_LIBRARY_DISK', 'public'),
+        // Media is served through the share-link controller, which enforces
+        // share abilities, folder ACL, policies, and access logging. Keep this
+        // on a PRIVATE disk (e.g. 'local' or a private S3 bucket). A 'public'
+        // disk lets spatie serve raw bytes at a guessable /storage/{id}/{file}
+        // path, bypassing every access-control check above. Only use 'public'
+        // if you explicitly do not want access control on media.
+        'disk' => env('MEDIA_LIBRARY_DISK', 'local'),
         'max_size_kb' => 100_000,
         'allowed_mimes' => ['image/*', 'video/*', 'audio/*', 'application/pdf', 'application/zip'],
         'presigned_ttl_seconds' => 900,

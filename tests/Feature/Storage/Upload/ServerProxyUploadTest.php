@@ -12,6 +12,7 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryStorage;
 use Kurt\Modules\MediaLibrary\Contracts\MediaLibraryOwner;
+use Kurt\Modules\MediaLibrary\Exceptions\InvalidUpload;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\BlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\PaletteExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator;
@@ -193,6 +194,58 @@ it('falls back to the auth user via the subject resolver when owner is null', fu
 
     expect($item->owner_type)->toBe('stub_owner');
     expect((int) $item->owner_id)->toBe(99);
+});
+
+it('rejects an upload whose real mime type is not allowed', function (): void {
+    Event::fake();
+    config()->set('media-library.uploads.allowed_mimes', ['application/pdf']);
+
+    // Real content is a PNG; the client-declared mime is irrelevant because
+    // upload() validates the content-derived mime.
+    $file = new UploadedFile(
+        __DIR__.'/../../../fixtures/test.png',
+        'not-a-pdf.png',
+        'image/png',
+        null,
+        true,
+    );
+
+    expect(fn () => buildCoordinator()->upload($file, makeStubOwner()))
+        ->toThrow(InvalidUpload::class);
+});
+
+it('rejects an oversize upload based on the real file size', function (): void {
+    Event::fake();
+    // Disable the mime allow-list so this test isolates the size check.
+    config()->set('media-library.uploads.allowed_mimes', []);
+    config()->set('media-library.uploads.max_size_kb', 100);
+
+    $file = UploadedFile::fake()->create('large.bin', 500); // 500 KB > 100 KB limit
+
+    expect(fn () => buildCoordinator()->upload($file, makeStubOwner()))
+        ->toThrow(InvalidUpload::class);
+});
+
+it('sanitizes a path-traversal filename before storing', function (): void {
+    Event::fake();
+
+    $file = new UploadedFile(
+        __DIR__.'/../../../fixtures/test.png',
+        '../../etc/passwd.png',
+        'image/png',
+        null,
+        true,
+    );
+
+    $item = buildCoordinator()->upload($file, makeStubOwner());
+
+    expect($item->filename)->not->toContain('..');
+    expect($item->filename)->not->toContain('/');
+    expect($item->filename)->toBe('passwd.png');
+
+    $media = $item->spatieMedia();
+    expect($media?->file_name)->not->toContain('..');
+    expect($media?->file_name)->not->toContain('/');
 });
 
 it('records auth user id as created_by and updated_by when authenticated', function (): void {
