@@ -21,10 +21,13 @@ class ShareLinkFactory extends Factory
      */
     public function definition(): array
     {
+        $token = rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
+
         return [
             'item_id' => MediaLibraryItem::factory(),
             'folder_id' => null,
-            'token' => rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '='),
+            'token' => $token,
+            'token_hash' => hash('sha256', $token),
             'abilities' => ['view'],
             'invitee_email' => null,
             'expires_at' => now()->addDays(7),
@@ -66,6 +69,9 @@ class ShareLinkFactory extends Factory
 
     public function withToken(string $token): static
     {
-        return $this->state(fn () => ['token' => $token]);
+        return $this->state(fn () => [
+            'token' => $token,
+            'token_hash' => hash('sha256', $token),
+        ]);
     }
 }

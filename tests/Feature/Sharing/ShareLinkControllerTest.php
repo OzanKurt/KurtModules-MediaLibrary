@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Kurt\Modules\MediaLibrary\Access\Support\DefaultSubjectResolver;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Sharing\Http\Controllers\ShareLinkController;
 use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
@@ -184,3 +186,57 @@ it('denies an unauthenticated requester when enforcement is on', function (): vo
 
     buildShareController()->show($link->token, shareRequestAs($link->token, null));
 })->throws(HttpException::class, 'invitee_mismatch');
+
+it('returns a bounded JSON listing for a folder share (was always 410)', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+
+    $folder = MediaLibraryFolder::factory()->create();
+    MediaLibraryItem::factory()->count(3)->create(['folder_id' => $folder->id]);
+    // An item in a different folder must not leak into the listing.
+    MediaLibraryItem::factory()->create(['folder_id' => null]);
+
+    $link = ShareLink::factory()->forFolder($folder->id)->create(['abilities' => ['view']]);
+
+    $response = buildShareController()->show($link->token, Request::create('/share/'.$link->token, 'GET'));
+
+    expect($response)->toBeInstanceOf(JsonResponse::class);
+    expect($response->getStatusCode())->toBe(200);
+
+    /** @var array<string, mixed> $payload */
+    $payload = $response->getData(true);
+    expect($payload['count'])->toBe(3);
+    expect($payload['items'])->toHaveCount(3);
+    expect($payload['folder']['id'])->toBe($folder->id);
+    expect($payload['abilities'])->toBe(['view']);
+});
+
+it('honours the folder_listing_limit for a folder share', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+    config()->set('media-library.shares.folder_listing_limit', 2);
+
+    $folder = MediaLibraryFolder::factory()->create();
+    MediaLibraryItem::factory()->count(5)->create(['folder_id' => $folder->id]);
+
+    $link = ShareLink::factory()->forFolder($folder->id)->create(['abilities' => ['view']]);
+
+    $response = buildShareController()->show($link->token, Request::create('/share/'.$link->token, 'GET'));
+
+    /** @var array<string, mixed> $payload */
+    $payload = $response->getData(true);
+    expect($payload['count'])->toBe(2);
+});
+
+it('denies a folder share when the requested ability is not granted', function (): void {
+    Event::fake();
+    $folder = MediaLibraryFolder::factory()->create();
+    $link = ShareLink::factory()->forFolder($folder->id)->create(['abilities' => ['view']]);
+
+    buildShareController()->show(
+        $link->token,
+        Request::create('/share/'.$link->token, 'GET', ['download' => '1']),
+    );
+})->throws(HttpException::class, 'ability_not_granted');

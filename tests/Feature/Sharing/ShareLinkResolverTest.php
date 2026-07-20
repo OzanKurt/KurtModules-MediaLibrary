@@ -44,3 +44,25 @@ it('resolves a link with no expiry', function (): void {
 
     expect($resolver->resolve('no-expiry')->id)->toBe($link->id);
 });
+
+it('resolves by the hash of the token, not the plaintext value', function (): void {
+    // Store only the hash (plaintext token blanked) so a match can only come
+    // from the hashed lookup, proving tokens are matched by hash.
+    $link = ShareLink::factory()->create([
+        'token' => '',
+        'token_hash' => hash('sha256', 'the-real-token'),
+    ]);
+    $resolver = new ShareLinkResolver;
+
+    expect($resolver->resolve('the-real-token')->id)->toBe($link->id);
+});
+
+it('still resolves a legacy link that has no token_hash (backward compat)', function (): void {
+    $link = ShareLink::factory()->create([
+        'token' => 'legacy-plain-token',
+        'token_hash' => null,
+    ]);
+    $resolver = new ShareLinkResolver;
+
+    expect($resolver->resolve('legacy-plain-token')->id)->toBe($link->id);
+});

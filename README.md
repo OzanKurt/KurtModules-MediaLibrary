@@ -6,7 +6,7 @@ Wraps `spatie/laravel-medialibrary` as the storage engine.
 
 ## Requirements
 
-- PHP 8.4+
+- PHP 8.3+
 - Laravel 12.x
 - `ozankurt/laravel-modules-core` v2.x
 - `spatie/laravel-medialibrary` v11.x
@@ -24,10 +24,12 @@ php artisan migrate
 
 - **Catalog** — MediaLibraryFolder (nested tree), MediaLibraryItem (WordPress-style row), MediaLibraryTag, polymorphic attachments to consumer models, saved searches.
 - **Storage** — Wraps spatie/laravel-medialibrary via a per-item host model. Versioning with stable item ids. Ad-hoc focal-point-aware variant generation. Presigned direct-to-S3 + server-proxy upload flows.
-- **Sharing** — TTL share links with abilities (view/download) + access log + invitee email.
+- **Sharing** — TTL share links with abilities (view/download) + access log + invitee email. Item shares stream the file; folder shares return a bounded JSON listing of the folder's items. The public share route is rate-limited and tokens are matched by hash, not plaintext.
 - **Access** — Folder ACL with the same SubjectResolver pattern as ResourceLibrary.
 - **Search** — Eloquent scopes (byOwner/byFolder/byTag/byMimeType/byDateRange/search) + optional Scout adapter contract.
-- **Pluggable contracts** — EXIF, OCR, AI tagger, blurhash, palette extractor, Scout adapter, MediaSubjectResolver.
+- **Synchronous extraction** — image dimensions, blurhash, and colour palette are extracted in-request on upload. `MediaSubjectResolver` is pluggable via config.
+- **Pluggable contract stubs** — `ExifExtractor`, `OcrExtractor`, `AiTagger`, and `ScoutAdapter` are extension points only. Nothing dispatches them out of the box: bind your own implementation (and a job/command to invoke it) to use them. `ScoutAdapter` is wired to the `media-library:reindex` command.
+- **GDPR helpers** — `media-library:purge-subject {type} {id}` hard-deletes (optionally anonymises) all data owned by a subject; `media-library:prune-access-log` enforces access-log retention (`access_log.prune_after_days`).
 - **Optional Laravel Notifications** — Mail + Database channels with publishable Blade templates.
 
 ## Share links are bearer credentials

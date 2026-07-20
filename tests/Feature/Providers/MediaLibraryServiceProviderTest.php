@@ -23,7 +23,6 @@ use Kurt\Modules\MediaLibrary\Storage\Contracts\BlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\ExifExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\OcrExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\PaletteExtractor;
-use Kurt\Modules\MediaLibrary\Storage\Extractors\DefaultExifExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Support\ConversionEngine;
@@ -58,14 +57,11 @@ it('binds the default palette extractor per config', function (): void {
         ->toBeInstanceOf(InterventionPaletteExtractor::class);
 });
 
-it('binds the default exif extractor per config', function (): void {
-    expect(app(ExifExtractor::class))
-        ->toBeInstanceOf(DefaultExifExtractor::class);
-});
-
-it('does not bind optional extractor contracts when config is null', function (): void {
-    // The plan defines OcrExtractor + AiTagger as null by default — they
-    // should remain unbound in the container.
+it('does not auto-bind extraction contracts that nothing consumes at runtime', function (): void {
+    // Only blurhash + palette are wired (they feed MetadataExtractor). exif, ocr,
+    // and ai_tagger stay unbound pluggable stubs — nothing dispatches them, so the
+    // package no longer binds them for you.
+    expect(app()->bound(ExifExtractor::class))->toBeFalse();
     expect(app()->bound(OcrExtractor::class))->toBeFalse();
     expect(app()->bound(AiTagger::class))->toBeFalse();
 });

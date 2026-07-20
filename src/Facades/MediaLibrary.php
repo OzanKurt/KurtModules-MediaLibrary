@@ -24,7 +24,7 @@ use Kurt\Modules\MediaLibrary\Support\MediaLibrary as Service;
  * @method static MediaLibraryItem replace(MediaLibraryItem $item, UploadedFile|MediaLibraryPendingUpload $new, string $changelog)
  * @method static MediaLibraryFolder createFolder(MediaLibraryOwner $owner, string $name, ?MediaLibraryFolder $parent = null)
  * @method static MediaLibraryFolder moveFolderTo(MediaLibraryFolder $folder, ?MediaLibraryFolder $newParent)
- * @method static int moveItems(array<int, int> $itemIds, ?MediaLibraryFolder $newFolder)
+ * @method static int moveItems(array<int, int> $itemIds, ?MediaLibraryFolder $newFolder, ?MediaLibraryOwner $owner = null)
  * @method static void trash(MediaLibraryItem|MediaLibraryFolder $target)
  * @method static void restore(MediaLibraryItem|MediaLibraryFolder $target)
  * @method static string shareItem(MediaLibraryItem $item, int $expiresInSeconds, array<int, string> $abilities = ['view'], ?string $invitee = null)

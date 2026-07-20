@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Kurt\Modules\MediaLibrary\Sharing\Http\Controllers;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Sharing\Enums\AccessAction;
+use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
 use Kurt\Modules\MediaLibrary\Sharing\Support\AccessLogger;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkResolver;
 use Symfony\Component\HttpFoundation\Response;
@@ -58,6 +61,15 @@ final class ShareLinkController
 
         $this->logger->log($link->item, $link, $user, AccessAction::from($requested));
 
+        // Folder shares carry a folder_id and no item_id: instead of streaming a
+        // single file they return a bounded JSON listing of the folder's items
+        // (metadata + each item's URL). The share abilities already gate whether
+        // the holder may see the listing at all; the per-item URLs point at the
+        // same access-controlled read paths.
+        if ($link->item_id === null && $link->folder_id !== null) {
+            return $this->folderListing($link, $abilities);
+        }
+
         $media = $link->item?->spatieMedia();
         if ($media === null) {
             abort(410, 'media_gone');
@@ -84,5 +96,51 @@ final class ShareLinkController
         return $isDownload
             ? $filesystem->download($relativePath, $media->file_name)
             : $filesystem->response($relativePath, $media->file_name);
+    }
+
+    /**
+     * Bounded JSON listing of a folder-share's direct items. Non-recursive and
+     * capped by `media-library.shares.folder_listing_limit` so a share on a huge
+     * folder can never fan out into an unbounded response.
+     *
+     * @param  array<int, string>  $abilities
+     */
+    private function folderListing(ShareLink $link, array $abilities): JsonResponse
+    {
+        $folder = $link->folder;
+
+        if ($folder === null) {
+            abort(410, 'folder_gone');
+        }
+
+        $limit = (int) config('media-library.shares.folder_listing_limit', 500);
+        $limit = $limit > 0 ? $limit : 500;
+
+        $items = MediaLibraryItem::query()
+            ->where('folder_id', $folder->id)
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        return new JsonResponse([
+            'folder' => [
+                'id' => $folder->id,
+                'name' => $folder->name,
+                'path' => $folder->path,
+            ],
+            'abilities' => array_values($abilities),
+            'count' => $items->count(),
+            'items' => $items->map(static fn (MediaLibraryItem $item): array => [
+                'id' => $item->id,
+                'slug' => $item->slug,
+                'title' => $item->title,
+                'filename' => $item->filename,
+                'mime_type' => $item->mime_type,
+                'byte_size' => $item->byte_size,
+                'width' => $item->width,
+                'height' => $item->height,
+                'url' => $item->url(),
+            ])->all(),
+        ]);
     }
 }

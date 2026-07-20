@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Kurt\Modules\MediaLibrary\Catalog\Enums\Visibility;
 use Kurt\Modules\MediaLibrary\Catalog\Events\FolderMoved;
@@ -137,13 +138,74 @@ final class MediaLibrary
     }
 
     /**
+     * Move items into a folder (or out of any folder when $newFolder is null),
+     * keeping the source and target folder `item_count` counters correct in the
+     * same transaction. When $owner is supplied the move is scoped to that
+     * owner's items, so a caller can never relocate media it does not own.
+     *
      * @param  array<int, int>  $itemIds
      */
-    public function moveItems(array $itemIds, ?MediaLibraryFolder $newFolder): int
+    public function moveItems(array $itemIds, ?MediaLibraryFolder $newFolder, ?MediaLibraryOwner $owner = null): int
     {
-        return MediaLibraryItem::query()
-            ->whereIn('id', $itemIds)
-            ->update(['folder_id' => $newFolder?->id]);
+        if ($itemIds === []) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($itemIds, $newFolder, $owner): int {
+            $query = MediaLibraryItem::query()->whereIn('id', $itemIds);
+
+            if ($owner !== null) {
+                $query->where('owner_type', $owner->getMorphClass())
+                    ->where('owner_id', $owner->getKey());
+            }
+
+            /** @var Collection<int, MediaLibraryItem> $items */
+            $items = $query->get();
+
+            if ($items->isEmpty()) {
+                return 0;
+            }
+
+            $targetId = $newFolder?->id;
+
+            // Tally how many items actually leave each source folder. Items already
+            // sitting in the target don't move and must not shift any counter.
+            $decrements = [];
+            $moved = 0;
+            foreach ($items as $item) {
+                if ($item->folder_id === $targetId) {
+                    continue;
+                }
+
+                if ($item->folder_id !== null) {
+                    $decrements[$item->folder_id] = ($decrements[$item->folder_id] ?? 0) + 1;
+                }
+
+                $moved++;
+            }
+
+            if ($moved === 0) {
+                return 0;
+            }
+
+            MediaLibraryItem::query()
+                ->whereIn('id', $items->pluck('id')->all())
+                ->update(['folder_id' => $targetId]);
+
+            foreach ($decrements as $sourceId => $count) {
+                $source = MediaLibraryFolder::query()->find($sourceId);
+
+                if ($source !== null) {
+                    $source->forceFill(['item_count' => max(0, $source->item_count - $count)])->save();
+                }
+            }
+
+            if ($targetId !== null) {
+                MediaLibraryFolder::query()->whereKey($targetId)->increment('item_count', $moved);
+            }
+
+            return $moved;
+        });
     }
 
     // ----------------------------------------------------------------
@@ -184,9 +246,12 @@ final class MediaLibrary
         $authUserId = auth()->id();
         $authUserId = is_int($authUserId) ? $authUserId : null;
 
+        $token = $this->signer->generateToken();
+
         $link = ShareLink::create([
             'item_id' => $item->id,
-            'token' => $this->signer->generateToken(),
+            'token' => $token,
+            'token_hash' => $this->signer->hashToken($token),
             'abilities' => $abilities,
             'invitee_email' => $invitee,
             'expires_at' => $expiresInSeconds > 0 ? now()->addSeconds($expiresInSeconds) : null,
@@ -210,9 +275,12 @@ final class MediaLibrary
         $authUserId = auth()->id();
         $authUserId = is_int($authUserId) ? $authUserId : null;
 
+        $token = $this->signer->generateToken();
+
         $link = ShareLink::create([
             'folder_id' => $folder->id,
-            'token' => $this->signer->generateToken(),
+            'token' => $token,
+            'token_hash' => $this->signer->hashToken($token),
             'abilities' => $abilities,
             'invitee_email' => $invitee,
             'expires_at' => $expiresInSeconds > 0 ? now()->addSeconds($expiresInSeconds) : null,

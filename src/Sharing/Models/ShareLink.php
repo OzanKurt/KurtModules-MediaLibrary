@@ -18,6 +18,7 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
  * @property int|null $item_id
  * @property int|null $folder_id
  * @property string $token
+ * @property string|null $token_hash
  * @property array<int, string> $abilities
  * @property string|null $invitee_email
  * @property Carbon|null $expires_at
@@ -44,6 +45,7 @@ class ShareLink extends Model
         'item_id',
         'folder_id',
         'token',
+        'token_hash',
         'abilities',
         'invitee_email',
         'expires_at',
