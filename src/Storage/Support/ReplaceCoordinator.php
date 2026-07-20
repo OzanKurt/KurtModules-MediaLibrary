@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Kurt\Modules\MediaLibrary\Catalog\Events\ItemReplaced;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Exceptions\ReplaceFailed;
+use Kurt\Modules\MediaLibrary\Jobs\ExtractMediaMetadata;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryPendingUpload;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryVersion;
 use Kurt\Modules\MediaLibrary\Storage\Support\Concerns\HardensUploads;
@@ -45,7 +46,7 @@ final class ReplaceCoordinator
             $this->assertSizeAllowed($realSize === false ? null : (int) $realSize);
         }
 
-        return DB::transaction(function () use ($item, $new, $changelog): MediaLibraryItem {
+        $replaced = DB::transaction(function () use ($item, $new, $changelog): MediaLibraryItem {
             $storage = $item->storage;
 
             if ($storage === null) {
@@ -126,5 +127,10 @@ final class ReplaceCoordinator
 
             return $item->fresh() ?? $item;
         });
+
+        // Re-run the async extractor pipeline against the replacement file.
+        ExtractMediaMetadata::dispatchFor($replaced);
+
+        return $replaced;
     }
 }

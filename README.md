@@ -27,10 +27,60 @@ php artisan migrate
 - **Sharing** — TTL share links with abilities (view/download) + access log + invitee email. Item shares stream the file; folder shares return a bounded JSON listing of the folder's items. The public share route is rate-limited and tokens are matched by hash, not plaintext.
 - **Access** — Folder ACL with the same SubjectResolver pattern as ResourceLibrary.
 - **Search** — Eloquent scopes (byOwner/byFolder/byTag/byMimeType/byDateRange/search) + optional Scout adapter contract.
-- **Synchronous extraction** — image dimensions, blurhash, and colour palette are extracted in-request on upload. `MediaSubjectResolver` is pluggable via config.
-- **Pluggable contract stubs** — `ExifExtractor`, `OcrExtractor`, `AiTagger`, and `ScoutAdapter` are extension points only. Nothing dispatches them out of the box: bind your own implementation (and a job/command to invoke it) to use them. `ScoutAdapter` is wired to the `media-library:reindex` command.
+- **Two-stage metadata extraction** — dimensions, blurhash, and colour palette are extracted synchronously in-request on upload (immediate placeholder + colour data). A second, **async** stage (the `ExtractMediaMetadata` job) then runs the configured extractor pipeline over the stored file: real EXIF/GPS + dimensions via `exif_read_data()`/`getimagesize()`, plus pluggable OCR / AI-tagging / search-indexing steps. See [Extraction pipeline](#extraction-pipeline). `MediaSubjectResolver` is pluggable via config.
 - **GDPR helpers** — `media-library:purge-subject {type} {id}` hard-deletes (optionally anonymises) all data owned by a subject; `media-library:prune-access-log` enforces access-log retention (`access_log.prune_after_days`).
 - **Optional Laravel Notifications** — Mail + Database channels with publishable Blade templates.
+
+## Extraction pipeline
+
+After a successful upload or replace, the coordinators dispatch the
+`ExtractMediaMetadata` job (`implements ShouldQueue`). It resolves the item's
+stored media and runs the ordered steps in `media-library.extractors.pipeline`,
+each mapped to a contract binding in `media-library.contracts`:
+
+| Step | Contract | Default binding | Persists to |
+| --- | --- | --- | --- |
+| `exif` | `Storage\Contracts\ExifExtractor` | `DefaultExifExtractor` (real) | `exif` json (+ backfills `width`/`height`) |
+| `ocr` | `Storage\Contracts\OcrExtractor` | `null` (skipped) | `extracted_text` |
+| `ai_tagger` | `Storage\Contracts\AiTagger` | `null` (skipped) | `ai_tags` json |
+| `scout` | `Search\Contracts\ScoutAdapter` | `null` (skipped) | search index |
+
+`DefaultExifExtractor` uses PHP's `getimagesize()` for dimensions and
+`exif_read_data()` for full EXIF **including GPS**. The EXIF call is guarded by
+`function_exists('exif_read_data')` / `extension_loaded('exif')`: if `ext-exif`
+is unavailable it is skipped gracefully and only dimensions are returned. Each
+step also fires a domain event (`ExifExtracted`, `TextExtracted`,
+`AiTagsAssigned`) the consumer can listen for.
+
+**Extension points.** The package ships **no** OCR / AI / search engine — those
+steps stay unbound (and are skipped) until you supply one. Point the config at
+your implementation:
+
+```php
+// config/media-library.php
+'contracts' => [
+    'ocr'       => \App\Media\TesseractOcr::class,     // implements Storage\Contracts\OcrExtractor
+    'ai_tagger' => \App\Media\VisionTagger::class,     // implements Storage\Contracts\AiTagger
+    'scout'     => \App\Media\ScoutIndexer::class,     // implements Search\Contracts\ScoutAdapter
+],
+```
+
+Safe no-op reference stubs (`NullOcrExtractor`, `NullAiTagger`,
+`NullScoutAdapter`) ship with the package if you want an inert binding.
+
+**Dispatch mode.** `media-library.extractors.dispatch` (env
+`MEDIA_LIBRARY_EXTRACTORS_DISPATCH`) is `queued` by default; set it to `sync` to
+run the pipeline inline in the request. `extractors.connection` /
+`extractors.queue` route the queued job. `media-library:reextract {item}`
+re-runs both stages for a single item on demand.
+
+> **Note:** this reverses the round-2 audit removal of the `extractors.async`
+> config, which was dropped because nothing dispatched it. The pipeline is now
+> wired for real via the `ExtractMediaMetadata` job.
+
+**GDPR.** Extracted EXIF/GPS lives in the item's `exif` column, so
+`media-library:purge-subject {type} {id}` removes it together with the item —
+no orphaned location PII survives a subject purge.
 
 ## Share links are bearer credentials
 

@@ -32,15 +32,20 @@ use Kurt\Modules\MediaLibrary\Policies\MediaLibraryFolderPolicy;
 use Kurt\Modules\MediaLibrary\Policies\MediaLibraryItemPolicy;
 use Kurt\Modules\MediaLibrary\Policies\SavedSearchPolicy;
 use Kurt\Modules\MediaLibrary\Policies\ShareLinkPolicy;
+use Kurt\Modules\MediaLibrary\Search\Contracts\ScoutAdapter;
 use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
 use Kurt\Modules\MediaLibrary\Sharing\Support\AccessLogger;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkResolver;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkSigner;
+use Kurt\Modules\MediaLibrary\Storage\Contracts\AiTagger;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\BlurhashGenerator;
+use Kurt\Modules\MediaLibrary\Storage\Contracts\ExifExtractor;
+use Kurt\Modules\MediaLibrary\Storage\Contracts\OcrExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\PaletteExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Support\ConversionEngine;
 use Kurt\Modules\MediaLibrary\Storage\Support\FocalPointCropper;
 use Kurt\Modules\MediaLibrary\Storage\Support\MetadataExtractor;
+use Kurt\Modules\MediaLibrary\Storage\Support\MetadataPipeline;
 use Kurt\Modules\MediaLibrary\Storage\Support\ReplaceCoordinator;
 use Kurt\Modules\MediaLibrary\Storage\Support\UploadCoordinator;
 use Kurt\Modules\MediaLibrary\Storage\Support\VariantGenerator;
@@ -114,7 +119,28 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
             });
         }
 
+        // Async pipeline extractors — bound only when configured to a class.
+        // exif ships a real default; ocr / ai_tagger / scout stay unbound (and
+        // are skipped by the ExtractMediaMetadata job) until a consumer supplies
+        // an engine. Left unbound, MetadataPipeline skips the step gracefully.
+        /** @var array<class-string, string> $pipelineContracts */
+        $pipelineContracts = [
+            ExifExtractor::class => 'exif',
+            OcrExtractor::class => 'ocr',
+            AiTagger::class => 'ai_tagger',
+            ScoutAdapter::class => 'scout',
+        ];
+
+        foreach ($pipelineContracts as $contract => $key) {
+            $class = config('media-library.contracts.'.$key);
+
+            if (is_string($class) && $class !== '') {
+                $this->app->singleton($contract, static fn ($app): object => $app->make($class));
+            }
+        }
+
         // Support services
+        $this->app->singleton(MetadataPipeline::class);
         $this->app->singleton(FocalPointCropper::class);
         $this->app->singleton(FolderPermissionResolver::class);
         $this->app->scoped(MediaLibraryAccess::class);

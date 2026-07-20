@@ -45,6 +45,28 @@ it('purges all data for a subject while leaving other subjects untouched', funct
     expect(MediaLibraryItem::query()->find($itemB->id))->not->toBeNull();
 });
 
+it('purges extracted EXIF/GPS metadata along with the item row', function (): void {
+    // GPS coordinates extracted by the pipeline live in the item's `exif` json
+    // column, so the subject purge (which force-deletes the item) must remove
+    // them — no orphaned location PII may survive.
+    $item = MediaLibraryItem::factory()->create([
+        'owner_type' => 'stub_owner',
+        'owner_id' => 555,
+        'exif' => [
+            'GPSLatitude' => ['51/1', '30/1', '0/1'],
+            'GPSLatitudeRef' => 'N',
+            'GPSLongitude' => ['0/1', '7/1', '0/1'],
+            'GPSLongitudeRef' => 'E',
+        ],
+    ]);
+
+    expect($item->exif)->toHaveKey('GPSLatitude');
+
+    expect(Artisan::call('media-library:purge-subject', ['type' => 'stub_owner', 'id' => 555]))->toBe(0);
+
+    expect(MediaLibraryItem::withTrashed()->find($item->id))->toBeNull();
+});
+
 it('anonymizes access-log viewer identity with --anonymize-log', function (): void {
     $item = MediaLibraryItem::factory()->create(['owner_type' => 'stub_owner', 'owner_id' => 999]);
 

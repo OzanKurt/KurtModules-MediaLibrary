@@ -16,6 +16,7 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryStorage;
 use Kurt\Modules\MediaLibrary\Contracts\MediaLibraryOwner;
 use Kurt\Modules\MediaLibrary\Exceptions\InvalidUpload;
+use Kurt\Modules\MediaLibrary\Jobs\ExtractMediaMetadata;
 use Kurt\Modules\MediaLibrary\Storage\Enums\PendingUploadStatus;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryPendingUpload;
 use Kurt\Modules\MediaLibrary\Storage\Support\Concerns\HardensUploads;
@@ -56,7 +57,7 @@ final class UploadCoordinator
         $realSize = $file->getSize();
         $this->assertSizeAllowed($realSize === false ? null : (int) $realSize);
 
-        return DB::transaction(function () use ($file, $owner, $folder, $attributes): MediaLibraryItem {
+        $item = DB::transaction(function () use ($file, $owner, $folder, $attributes): MediaLibraryItem {
             $storage = MediaLibraryStorage::create([
                 'item_uid' => (string) Str::uuid(),
             ]);
@@ -114,6 +115,12 @@ final class UploadCoordinator
 
             return $item;
         });
+
+        // Dispatch the async extractor pipeline (exif/GPS, ocr, ai tags, scout)
+        // after the item is committed so a queued worker sees the persisted row.
+        ExtractMediaMetadata::dispatchFor($item);
+
+        return $item;
     }
 
     /**
@@ -214,7 +221,7 @@ final class UploadCoordinator
             throw new InvalidUpload('uploaded object not found on disk');
         }
 
-        return DB::transaction(function () use ($pending, $key, $disk): MediaLibraryItem {
+        $item = DB::transaction(function () use ($pending, $key, $disk): MediaLibraryItem {
             $storage = MediaLibraryStorage::create([
                 'item_uid' => (string) Str::uuid(),
             ]);
@@ -268,6 +275,10 @@ final class UploadCoordinator
 
             return $item;
         });
+
+        ExtractMediaMetadata::dispatchFor($item);
+
+        return $item;
     }
 
     /**

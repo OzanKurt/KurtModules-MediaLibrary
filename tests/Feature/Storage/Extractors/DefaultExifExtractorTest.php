@@ -43,23 +43,54 @@ it('returns an empty array for a non-existent file', function (): void {
     expect($extractor->extract(__DIR__.'/does-not-exist.jpg'))->toBe([]);
 });
 
-it('returns an array for a readable image file', function (): void {
+it('returns an empty array when path is a directory', function (): void {
     $extractor = new DefaultExifExtractor;
+
+    expect($extractor->extract(__DIR__))->toBe([]);
+});
+
+it('extracts dimensions from a readable image', function (): void {
     $path = __DIR__.'/../../../fixtures/test.jpg';
 
     if (! file_exists($path)) {
         $this->markTestSkipped('GD not available to generate fixture.');
     }
 
-    $result = $extractor->extract($path);
+    $result = (new DefaultExifExtractor)->extract($path);
 
-    // GD-generated JPEGs typically have no EXIF data, so empty is OK.
-    // What matters is that we get an array and don't blow up.
-    expect($result)->toBeArray();
+    expect($result)->toBeArray()
+        ->and($result['width'])->toBe(64)
+        ->and($result['height'])->toBe(64);
 });
 
-it('returns an empty array when path is a directory', function (): void {
-    $extractor = new DefaultExifExtractor;
+it('extracts EXIF including GPS from an image that carries it', function (): void {
+    if (! function_exists('exif_read_data') || ! extension_loaded('exif')) {
+        $this->markTestSkipped('ext-exif not available.');
+    }
 
-    expect($extractor->extract(__DIR__))->toBe([]);
+    $path = __DIR__.'/../../../fixtures/exif-gps.jpg';
+
+    $result = (new DefaultExifExtractor)->extract($path);
+
+    expect($result['width'])->toBe(48)
+        ->and($result['height'])->toBe(32)
+        ->and($result['exif'])->toBeArray()
+        ->and($result['exif'])->toHaveKey('GPSLatitude')
+        ->and($result['exif'])->toHaveKey('GPSLongitude')
+        ->and($result['exif']['GPSLatitudeRef'])->toBe('N')
+        ->and($result['exif']['Make'])->toBe('TestCam');
+
+    // Extracted EXIF must survive a JSON round-trip into the item's json column.
+    expect(json_encode($result['exif']))->not->toBeFalse();
+});
+
+it('still returns dimensions but skips EXIF when ext-exif is unavailable', function (): void {
+    $path = __DIR__.'/../../../fixtures/exif-gps.jpg';
+
+    // Force the ext-exif availability check off to exercise the graceful-skip path.
+    $result = (new DefaultExifExtractor(exifAvailable: false))->extract($path);
+
+    expect($result['width'])->toBe(48)
+        ->and($result['height'])->toBe(32)
+        ->and($result)->not->toHaveKey('exif');
 });
