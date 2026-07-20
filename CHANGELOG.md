@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.2.0] - 2026-07-20
+
+### Added
+- **Async extractor pipeline (wired for real).** A queued `ExtractMediaMetadata`
+  job (`implements ShouldQueue`) is now dispatched after every successful upload
+  / replace. It runs the ordered steps in `media-library.extractors.pipeline`
+  over the stored media and persists the results. Dispatch is configurable via
+  `media-library.extractors.dispatch` (`queued` default / `sync`), with optional
+  `connection` + `queue`.
+- **Real `ExifExtractor`.** `DefaultExifExtractor` now extracts image dimensions
+  (`getimagesize()`) and full EXIF **including GPS** (`exif_read_data()`),
+  persisting to the item's `exif` json column and backfilling `width`/`height`.
+  The EXIF read is guarded by `extension_loaded('exif')` and skipped gracefully
+  (dimensions still returned) when `ext-exif` is absent.
+- **No-op stub defaults.** `NullOcrExtractor`, `NullAiTagger`, and
+  `NullScoutAdapter` ship as safe references. OCR / AI-tagging / scout remain
+  pluggable extension points (unbound by default, skipped gracefully); bind your
+  own engine in `media-library.contracts` to activate a step. The package ships
+  no OCR/AI engine.
+- `media-library:reextract {item}` now also re-runs the async pipeline inline.
+
+### Changed
+- Re-introduced the `extractors` config block and the `contracts.exif` binding
+  that the round-2 audit had removed (it was dead because nothing dispatched it).
+  This reverses that removal — the pipeline is now dispatched by the upload /
+  replace coordinators.
+
+### Security / GDPR
+- Extracted EXIF/GPS is stored on the item's `exif` column, so the existing
+  `media-library:purge-subject` subject purge already removes it with the item.
+  No location PII survives a purge (covered by a regression test).
+
 ## [2.1.0] - 2026-07-20
 
 ### Added

@@ -7,6 +7,7 @@ namespace Kurt\Modules\MediaLibrary\Console\Commands;
 use Illuminate\Console\Command;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Storage\Support\MetadataExtractor;
+use Kurt\Modules\MediaLibrary\Storage\Support\MetadataPipeline;
 
 final class ReextractCommand extends Command
 {
@@ -40,6 +41,9 @@ final class ReextractCommand extends Command
             'dominant_color' => $extracted['dominant_color'] ?? $item->dominant_color,
             'palette' => $extracted['palette'] ?? $item->palette,
         ])->save();
+
+        // Re-run the async pipeline (exif/GPS, ocr, ai tags, scout) inline.
+        app(MetadataPipeline::class)->run($item->refresh());
 
         $this->info("Reextracted metadata for item #{$item->id}.");
 

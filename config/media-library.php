@@ -7,6 +7,7 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryTag;
 use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
+use Kurt\Modules\MediaLibrary\Storage\Extractors\DefaultExifExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor;
 
@@ -14,15 +15,43 @@ return [
     'subject_resolver' => DefaultSubjectResolver::class,
 
     'contracts' => [
-        // Runtime extraction the package actually wires: blurhash + palette run
-        // synchronously on every image upload. ocr / ai_tagger / scout are
-        // pluggable extension points that stay unbound (null) until you supply an
-        // implementation and a job/command to invoke it - nothing runs them for you.
+        // Extractor contract bindings. Each is resolved from the container when
+        // set to a class-string and left unbound (skipped gracefully) when null.
+        //
+        // - blurhash + palette run SYNCHRONOUSLY on every image upload (they feed
+        //   MetadataExtractor for immediate placeholder + colour data).
+        // - exif runs ASYNCHRONOUSLY in the ExtractMediaMetadata job and pulls
+        //   dimensions + full EXIF (incl. GPS) via PHP's exif_read_data().
+        // - ocr / ai_tagger / scout are pluggable extension points. The package
+        //   ships no engine for them: point these at your own implementation (the
+        //   Null* stubs below are safe no-op references) and the async job will
+        //   run them. Left null, each step is skipped.
         'blurhash' => InterventionBlurhashGenerator::class,
         'palette' => InterventionPaletteExtractor::class,
-        'ocr' => null,
-        'ai_tagger' => null,
-        'scout' => null,
+        'exif' => DefaultExifExtractor::class,
+        'ocr' => null,        // \Kurt\Modules\MediaLibrary\Storage\Extractors\NullOcrExtractor::class
+        'ai_tagger' => null,  // \Kurt\Modules\MediaLibrary\Storage\Extractors\NullAiTagger::class
+        'scout' => null,      // \Kurt\Modules\MediaLibrary\Search\Support\NullScoutAdapter::class
+    ],
+
+    'extractors' => [
+        // Re-introduced in 2.2.0 (round-2 removed the earlier, dead sync/async
+        // lists that nothing dispatched). This block now drives a REAL queued
+        // job: after a successful upload / replace the coordinators dispatch
+        // ExtractMediaMetadata, which runs the `pipeline` steps below.
+        //
+        // Dispatch mode:
+        //   'queued' — push ExtractMediaMetadata onto the queue (ShouldQueue).
+        //   'sync'   — run it inline in the request (dispatchSync).
+        'dispatch' => env('MEDIA_LIBRARY_EXTRACTORS_DISPATCH', 'queued'),
+
+        // Optional queue connection + name for the queued dispatch mode.
+        'connection' => env('MEDIA_LIBRARY_EXTRACTORS_CONNECTION'),
+        'queue' => env('MEDIA_LIBRARY_EXTRACTORS_QUEUE'),
+
+        // Ordered steps the job runs over the stored media. Each name maps to a
+        // `contracts` binding above; unbound steps are skipped gracefully.
+        'pipeline' => ['exif', 'ocr', 'ai_tagger', 'scout'],
     ],
 
     'uploads' => [
