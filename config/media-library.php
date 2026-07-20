@@ -84,6 +84,26 @@ return [
         'hard_delete_old_files' => false,
     ],
 
+    'http' => [
+        // Out-of-the-box REST API, built on the Core API kit. Safe-by-default:
+        // in `headless` mode NOTHING is registered (no routes, no rate limiter).
+        // Flip to `api` (MEDIA_LIBRARY_HTTP_MODE=api) to expose the JSON API.
+        //
+        //   headless — no API surface (default).
+        //   api      — register the read + write REST routes.
+        //   ui       — same as api (reserved for a future first-party UI).
+        //
+        // Reads are ACL-scoped (folder/item Policies); writes require the auth
+        // middleware AND pass the same folder-ACL Policies per method. Uploads
+        // go through the UploadCoordinator so the hashing / extractor pipeline /
+        // GDPR bookkeeping all run — the API is a thin adapter, never a bypass.
+        'mode' => env('MEDIA_LIBRARY_HTTP_MODE', 'headless'),
+        'prefix' => 'api/media',
+        'middleware' => ['api'],
+        'auth_middleware' => ['auth'],
+        'rate_limit' => '60,1',
+    ],
+
     'routes' => [
         'share_enabled' => true,
         'share_prefix' => 'media-library/share',

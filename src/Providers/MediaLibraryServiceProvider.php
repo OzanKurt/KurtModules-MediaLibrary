@@ -174,6 +174,10 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
             $this->loadRoutesFrom(__DIR__.'/../../routes/share.php');
         }
 
+        // Register the Core-kit REST API. A no-op in headless mode; registers
+        // the module rate limiter + read/write route group otherwise.
+        $this->registerModuleApi(__DIR__.'/../../routes/api.php');
+
         // Schedule maintenance commands when running in console
         if ($this->app->runningInConsole()) {
             $this->app->booted(function (): void {

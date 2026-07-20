@@ -1,5 +1,31 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Out-of-the-box REST API** built on the Core API kit (Core `^2.2`).
+  Safe-by-default: nothing is registered until `media-library.http.mode` is set
+  to `api` (`MEDIA_LIBRARY_HTTP_MODE=api`); `headless` (default) registers no
+  routes. Config lives under a new `media-library.http` block (prefix
+  `api/media`, base `['api']` middleware, `['auth']` write middleware, `60,1`
+  throttle).
+- **Folder endpoints:** index (ACL-scoped children), show, store, update
+  (rename/move/re-scope), destroy, and `share` — either an ACL grant
+  (`FolderPermission`) or a bearer share-link.
+- **Media item endpoints:** index (ACL-scoped within a folder), show, upload
+  (`store`, server-proxy through `UploadCoordinator`), update
+  (rename/move/metadata), destroy, `replace` (through `ReplaceCoordinator`),
+  `download`, `signed-url`, plus presigned `uploads` initiate/complete/cancel.
+- Reads are ACL-scoped (a record behind an ACL the caller lacks is never
+  returned); writes require auth **and** pass the folder-ACL Policies per method.
+  Uploads run through the existing coordinators, so hashing, the extractor
+  pipeline, and GDPR bookkeeping all run — the API is a thin adapter, not a
+  bypass. New `MediaLibraryFolderResource` / `MediaLibraryItemResource` API
+  resources.
+
+### Changed
+- Bumped `ozankurt/laravel-modules-core` constraint to `^2.2`.
+
 ## [2.2.0] - 2026-07-20
 
 ### Added

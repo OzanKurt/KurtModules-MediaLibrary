@@ -5,9 +5,16 @@ declare(strict_types=1);
 use Filament\Forms\Form;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Kurt\Modules\MediaLibrary\Tests\ApiTestCase;
 use Kurt\Modules\MediaLibrary\Tests\TestCase;
 
 pest()->extend(TestCase::class)->in('Feature');
+
+// The REST API suite (tests/Api) boots the module in `http.mode = api`, which
+// must be set before the provider registers routes — hence a dedicated base
+// case whose defineEnvironment() flips the mode. It lives in its own top-level
+// directory so it never collides with the Feature binding above.
+pest()->extend(ApiTestCase::class)->in('Api');
 
 /*
 |--------------------------------------------------------------------------
