@@ -98,6 +98,89 @@ or mismatched requesters receive a `403`. Links whose `invitee_email` is `null`
 stay bearer regardless of the flag. The default is `false` to preserve the
 non-breaking bearer behavior.
 
+## API
+
+The package ships an out-of-the-box JSON REST API built on the Core **API kit**.
+It is **safe by default**: in `headless` mode (the default) nothing is
+registered — no routes, no rate limiter. Opt in per environment:
+
+```dotenv
+MEDIA_LIBRARY_HTTP_MODE=api
+```
+
+or in `config/media-library.php`:
+
+```php
+'http' => [
+    'mode' => env('MEDIA_LIBRARY_HTTP_MODE', 'headless'), // headless | api | ui
+    'prefix' => 'api/media',
+    'middleware' => ['api'],
+    'auth_middleware' => ['auth'],   // e.g. ['auth:sanctum'] for token auth
+    'rate_limit' => '60,1',          // maxAttempts,decayMinutes
+],
+```
+
+Every route is throttled by the named `media-library-api` limiter (keyed by user
+id, or client IP for guests). Read routes get the base middleware; **write**
+routes additionally get `auth_middleware`.
+
+### Endpoints
+
+All paths are under the configured prefix (default `api/media`). Route names are
+prefixed `media-library.api.` (e.g. `media-library.api.folders.index`).
+
+| Method | Path | Name | Auth | Purpose |
+|---|---|---|---|---|
+| GET | `folders` | `folders.index` | read | ACL-scoped folder list — `?parent={id}` lists that folder's children (needs view on the parent), else the current owner's roots |
+| GET | `folders/{folder}` | `folders.show` | read | Show a folder (view) |
+| POST | `folders` | `folders.store` | write | Create a folder (`name`, optional `parent_id`/`description`/`visibility`) |
+| PATCH | `folders/{folder}` | `folders.update` | write | Rename / move (`parent_id`) / re-scope a folder |
+| DELETE | `folders/{folder}` | `folders.destroy` | write | Soft-delete a folder |
+| POST | `folders/{folder}/share` | `folders.share` | write | Share a folder — **ACL grant** (`subject_type`, `subject_value`, `capability`, `cascade`) or **bearer share-link** (`abilities`, `expires_in`, `invitee_email`) |
+| GET | `items` | `items.index` | read | ACL-scoped item list — `?folder={id}` lists a folder's items (needs view on the folder), else the current owner's unfiled items |
+| GET | `items/{item}` | `items.show` | read | Show an item (view) |
+| GET | `items/{item}/download` | `items.download` | read* | Stream bytes — accepts a valid signature (from `signed-url`) **or** ACL download rights |
+| POST | `items` | `items.store` | write | **Upload** an image/file (multipart `file`, optional `folder_id` + metadata) — server-proxy, runs through the `UploadCoordinator` |
+| PATCH | `items/{item}` | `items.update` | write | Rename / move (`folder_id`) / edit metadata |
+| DELETE | `items/{item}` | `items.destroy` | write | Soft-delete an item |
+| POST | `items/{item}/replace` | `items.replace` | write | Replace the file (stable id) via the `ReplaceCoordinator` (multipart `file`, optional `changelog`) |
+| GET | `items/{item}/signed-url` | `items.signed-url` | write | Mint a time-limited signed URL to `download` (needs download rights) |
+| POST | `uploads` | `uploads.initiate` | write | Begin a presigned direct-to-storage upload |
+| POST | `uploads/{uploadId}/complete` | `uploads.complete` | write | Finalize a presigned upload |
+| DELETE | `uploads/{uploadId}` | `uploads.cancel` | write | Cancel a pending presigned upload |
+
+Responses use the Core envelope: `{ "data": … }` for success (with
+`meta.pagination` on list endpoints), `{ "message": …, "errors": … }` for
+errors. Lists accept `?per_page=` (clamped to 100), `?page=`, `?sort=` and
+`?filter[field]=` (allow-listed per resource).
+
+### ACL enforcement
+
+Reads are **ACL-scoped**: every controller authorises the folder/item Policy, so
+a record behind an ACL the caller lacks is never returned (an item in a folder
+the subject cannot access is neither shown nor listed). Writes require the auth
+middleware **and** pass the same folder-ACL Policies per method — authentication
+alone is never sufficient. Folder ACL is the model's own `FolderPermission` +
+visibility layer (`view` / `download` / `manage` capabilities, cascading down
+the tree).
+
+### Uploads go through the coordinators
+
+`items` (upload) and `items/{item}/replace` are thin adapters over the existing
+`UploadCoordinator` / `ReplaceCoordinator` — the API never writes media directly.
+That means every API upload runs the same content-mime + size validation,
+filename sanitisation, spatie storage, synchronous placeholder extraction
+(blurhash/palette) **and** the queued `ExtractMediaMetadata` pipeline
+(EXIF/GPS, OCR, AI tags, search index) that the facade path runs, plus the same
+GDPR bookkeeping. The default **server-proxy** flow POSTs the file to `items`.
+
+For a **presigned direct-to-storage** flow (skip the proxy, upload straight to
+S3), call `POST uploads` to get a presigned PUT URL + headers + object key, PUT
+the bytes to it from the client, then `POST uploads/{uploadId}/complete` — the
+finalize step re-validates the real object and runs the identical coordinator
+path. `initiate`/`complete`/`cancel` are scoped to the owner that created the
+pending upload.
+
 ## Filament admin
 
 The package ships admin resources for **Filament v3, v4, and v5**. Register the
