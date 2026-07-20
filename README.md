@@ -30,6 +30,22 @@ php artisan migrate
 - **Pluggable contracts** — EXIF, OCR, AI tagger, blurhash, palette extractor, Scout adapter, MediaSubjectResolver.
 - **Optional Laravel Notifications** — Mail + Database channels with publishable Blade templates.
 
+## Share links are bearer credentials
+
+Share links are **bearer credentials by default**: anyone who holds a valid,
+unexpired, un-revoked token can view or download the target (subject to the
+link's abilities). The `invitee_email` column records who a link was *sent* to
+for auditing and UI, but it does **not** restrict access on its own - the token
+is the only thing checked.
+
+If you need per-invitee enforcement, set `media-library.shares.enforce_invitee`
+to `true` (or `MEDIA_LIBRARY_ENFORCE_INVITEE=true`). With it enabled, a link
+that has an `invitee_email` set will only resolve for a requester who is
+authenticated as that email address (compared case-insensitively). Unauthenticated
+or mismatched requesters receive a `403`. Links whose `invitee_email` is `null`
+stay bearer regardless of the flag. The default is `false` to preserve the
+non-breaking bearer behavior.
+
 ## Filament admin
 
 The package ships admin resources for **Filament v3, v4, and v5**. Register the

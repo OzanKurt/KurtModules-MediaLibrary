@@ -21,6 +21,7 @@ use Kurt\Modules\MediaLibrary\Storage\Support\UploadCoordinator;
 use Kurt\Modules\MediaLibrary\Tests\Stubs\StubUser;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 function buildShareController(): ShareLinkController
 {
@@ -97,3 +98,89 @@ it('streams a remote-disk download with an attachment disposition', function ():
     expect($response->getStatusCode())->toBe(200);
     expect($response->headers->get('content-disposition'))->toContain('attachment');
 });
+
+function shareRequestAs(string $token, ?StubUser $user): Request
+{
+    $request = Request::create('/share/'.$token, 'GET');
+
+    if ($user !== null) {
+        $request->setUserResolver(fn () => $user);
+    }
+
+    return $request;
+}
+
+it('ignores invitee_email when enforcement is off (bearer semantics)', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+    config()->set('media-library.shares.enforce_invitee', false);
+
+    $item = uploadItemOnDisk('public');
+    $link = ShareLink::factory()->create([
+        'item_id' => $item->id,
+        'abilities' => ['view', 'download'],
+        'invitee_email' => 'guest@test.dev',
+    ]);
+
+    // No authenticated user, yet the token alone grants access.
+    $response = buildShareController()->show($link->token, shareRequestAs($link->token, null));
+
+    expect($response)->toBeInstanceOf(BinaryFileResponse::class);
+    expect($response->getStatusCode())->toBe(200);
+});
+
+it('allows a matching invitee when enforcement is on (case-insensitive)', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+    config()->set('media-library.shares.enforce_invitee', true);
+
+    $item = uploadItemOnDisk('public');
+    $link = ShareLink::factory()->create([
+        'item_id' => $item->id,
+        'abilities' => ['view', 'download'],
+        'invitee_email' => 'Guest@Test.dev',
+    ]);
+
+    $invitee = StubUser::create(['id' => 91, 'email' => 'guest@test.dev']);
+
+    $response = buildShareController()->show($link->token, shareRequestAs($link->token, $invitee));
+
+    expect($response)->toBeInstanceOf(BinaryFileResponse::class);
+    expect($response->getStatusCode())->toBe(200);
+});
+
+it('denies a mismatched invitee when enforcement is on', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+    config()->set('media-library.shares.enforce_invitee', true);
+
+    $item = uploadItemOnDisk('public');
+    $link = ShareLink::factory()->create([
+        'item_id' => $item->id,
+        'abilities' => ['view', 'download'],
+        'invitee_email' => 'guest@test.dev',
+    ]);
+
+    $stranger = StubUser::create(['id' => 92, 'email' => 'stranger@test.dev']);
+
+    buildShareController()->show($link->token, shareRequestAs($link->token, $stranger));
+})->throws(HttpException::class, 'invitee_mismatch');
+
+it('denies an unauthenticated requester when enforcement is on', function (): void {
+    Event::fake();
+    Storage::fake('public');
+    config()->set('media-library.uploads.disk', 'public');
+    config()->set('media-library.shares.enforce_invitee', true);
+
+    $item = uploadItemOnDisk('public');
+    $link = ShareLink::factory()->create([
+        'item_id' => $item->id,
+        'abilities' => ['view', 'download'],
+        'invitee_email' => 'guest@test.dev',
+    ]);
+
+    buildShareController()->show($link->token, shareRequestAs($link->token, null));
+})->throws(HttpException::class, 'invitee_mismatch');
