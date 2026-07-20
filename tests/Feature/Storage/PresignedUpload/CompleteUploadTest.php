@@ -163,6 +163,32 @@ it('throws InvalidUpload when the pending row has expired', function (): void {
         ->toThrow(InvalidUpload::class);
 });
 
+it('rejects a completed upload when the real object exceeds the size limit', function (): void {
+    Event::fake();
+    // Disable the mime allow-list so this test isolates the size re-check, and
+    // set a 1 KB limit. The client declares no byte_size at initiate, so the
+    // initiate-time size check is skipped entirely.
+    config()->set('media-library.uploads.allowed_mimes', []);
+    config()->set('media-library.uploads.max_size_kb', 1);
+
+    $coordinator = buildCompleteCoordinator();
+
+    $pending = $coordinator->initiateUpload(makeCompleteStubOwner(), [
+        'filename' => 'declared-small.png',
+        'mime_type' => 'image/png',
+    ]);
+
+    // The client PUTs an object far larger than the declared/allowed size to
+    // the presigned URL. completeUpload must reject it against the real object.
+    Storage::disk('s3')->put((string) $pending->driver_payload['key'], str_repeat('a', 5 * 1024));
+
+    expect(fn () => $coordinator->completeUpload($pending->upload_id))
+        ->toThrow(InvalidUpload::class);
+
+    $pending->refresh();
+    expect($pending->status)->toBe(PendingUploadStatus::Pending);
+});
+
 it('throws InvalidUpload when the uploaded object cannot be found on the disk', function (): void {
     $coordinator = buildCompleteCoordinator();
 

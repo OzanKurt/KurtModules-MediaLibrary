@@ -43,13 +43,23 @@ final class UploadCoordinator
         $authUser = auth()->user();
         $owner ??= $this->subjects->defaultOwner($authUser);
 
+        // Validate the REAL (content-derived) mime + size of the file being
+        // stored. Done before any disk write so rejected uploads never leave
+        // orphaned bytes on the disk. getMimeType() inspects the file contents
+        // (unlike the client-declared getClientMimeType()).
+        $realMime = (string) ($file->getMimeType() ?? $file->getClientMimeType());
+        $this->assertMimeAllowed($realMime);
+
+        $realSize = $file->getSize();
+        $this->assertSizeAllowed($realSize === false ? null : (int) $realSize);
+
         return DB::transaction(function () use ($file, $owner, $folder, $attributes): MediaLibraryItem {
             $storage = MediaLibraryStorage::create([
                 'item_uid' => (string) Str::uuid(),
             ]);
 
-            $disk = (string) config('media-library.uploads.disk', 'public');
-            $originalName = (string) $file->getClientOriginalName();
+            $disk = (string) config('media-library.uploads.disk', 'local');
+            $originalName = $this->sanitizeFilename((string) $file->getClientOriginalName());
 
             $media = $storage
                 ->addMedia($file->getPathname())
@@ -124,10 +134,14 @@ final class UploadCoordinator
             throw new InvalidUpload('filename and mime_type are required');
         }
 
+        // Strip any path components and slug the name before it becomes part of
+        // the S3 object key (defends against ../ traversal in the key).
+        $filename = $this->sanitizeFilename($filename);
+
         $this->assertMimeAllowed($mimeType);
         $this->assertSizeAllowed($byteSize);
 
-        $disk = (string) config('media-library.uploads.disk', 'public');
+        $disk = (string) config('media-library.uploads.disk', 'local');
         $uploadId = (string) Str::uuid();
         $key = 'media-library/incoming/'.$uploadId.'/'.$filename;
 
@@ -204,8 +218,15 @@ final class UploadCoordinator
 
             $media = $storage
                 ->addMediaFromDisk($key, $disk)
-                ->usingFileName($pending->filename)
+                ->usingFileName($this->sanitizeFilename($pending->filename))
                 ->toMediaCollection('mli', $disk);
+
+            // Re-validate against the REAL object now on disk. The mime + size
+            // checked at initiate were only the client-declared values, so a
+            // client could have PUT an oversized or disallowed object to the
+            // presigned URL. Rejecting here rolls back the transaction.
+            $this->assertMimeAllowed((string) $media->mime_type);
+            $this->assertSizeAllowed((int) $media->size);
 
             $extracted = $this->extractor->extractSync(
                 $media->getPath(),
@@ -265,6 +286,26 @@ final class UploadCoordinator
         }
 
         $pending->forceFill(['status' => PendingUploadStatus::Cancelled])->save();
+    }
+
+    /**
+     * Strip directory components and slug a client-supplied filename so it is
+     * safe to use as a storage filename / S3 key segment. The extension is
+     * preserved (lower-cased, alphanumeric only) so mime/type handling and
+     * downloads still work.
+     */
+    private function sanitizeFilename(string $name): string
+    {
+        $name = basename(str_replace('\\', '/', $name));
+
+        $extension = strtolower((string) preg_replace('/[^A-Za-z0-9]/', '', pathinfo($name, PATHINFO_EXTENSION)));
+        $base = Str::slug(pathinfo($name, PATHINFO_FILENAME));
+
+        if ($base === '') {
+            $base = 'file';
+        }
+
+        return $extension === '' ? $base : $base.'.'.$extension;
     }
 
     private function assertMimeAllowed(string $mimeType): void
