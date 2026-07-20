@@ -1,5 +1,78 @@
 # Changelog
 
+## [2.1.0] - 2026-07-20
+
+### Added
+- **Folder share links now work.** A folder share (`folder_id` set, `item_id`
+  null) returns a bounded JSON listing of the folder's items (metadata + URLs)
+  instead of a `410`. Capped by `media-library.shares.folder_listing_limit`
+  (default 500).
+- **GDPR subject purge** — `media-library:purge-subject {type} {id}` hard-deletes
+  (and, with `--anonymize-log`, anonymises) all data owned by a subject: items
+  and their stored files, folders, versions, variants, attachments, share links,
+  tags, saved searches, pending uploads, and the access-log rows for those items.
+- **Access-log retention** — `media-library:prune-access-log` deletes entries
+  older than `media-library.access_log.prune_after_days` (default 365; `0`
+  disables). Scheduled daily.
+- **Share token hashing** — new `token_hash` column on `media_library_share_links`;
+  tokens are now matched by SHA-256 hash rather than plaintext. Additive
+  migration backfills existing rows (`vendor:publish --tag=media-library-migrations`
+  + `migrate`).
+- **Share route rate limiting** — the public share endpoint now carries a
+  `throttle` middleware, configurable via `media-library.routes.share_throttle`
+  (default `60,1`).
+
+### Changed
+- **`replace()` hardening.** The proxied-upload branch of `ReplaceCoordinator`
+  now enforces the same mime allow-list, size limit, and filename sanitisation as
+  `UploadCoordinator`, and defaults to the private disk (`local`, was `public`).
+  Upload-hardening primitives were extracted into a shared `HardensUploads` trait.
+- **Folder ACL is no longer N+1.** `FolderPermissionResolver` loads a folder's
+  whole ancestor chain (with permissions) in a constant number of queries via a
+  single `whereIn` on the materialised `path`, instead of a lazy depth×2 walk.
+- **`moveItems()`** now keeps source/target folder `item_count` counters correct
+  in the same transaction and accepts an optional owner to scope the move.
+
+### Removed
+- Dead `extractors.sync` / `extractors.async` config (nothing read it) and the
+  unused `ExifExtractor` container binding. `blurhash` + `palette` remain the only
+  auto-wired synchronous extractors; `exif` / `ocr` / `ai_tagger` / `scout` stay
+  pluggable stubs. README/CHANGELOG no longer advertise EXIF/OCR/AI as active
+  pipelines. See UPGRADE-2.0.
+
+## [2.0.1] - 2026-07-20
+
+### Added
+- Opt-in `media-library.shares.enforce_invitee` flag (default `false`). When
+  enabled, a share link that sets `invitee_email` only resolves for a requester
+  authenticated as that email (case-insensitive); unauthenticated or mismatched
+  requesters get a `403`. The default preserves bearer-token semantics. Bearer
+  semantics documented in the controller and README.
+
+### Removed
+- Permanently-skipped `GdprAnonymizationTest` stub (the feature it guarded did
+  not exist; a real GDPR purge command arrives in 2.1.0).
+
+## [2.0.0] - 2026-07-20
+
+### Changed
+- **BREAKING:** the default upload disk is now `local` (private) instead of
+  `public`. Item bytes are served through the access-controlled share-link
+  controller rather than a guessable `/storage/{id}/{file}` URL. Set
+  `MEDIA_LIBRARY_DISK=public` to restore the old public behaviour (which disables
+  ACL for direct file access). See UPGRADE-2.0.
+- PHP constraint widened to `^8.3`; 8.3 added to the CI matrix.
+
+### Fixed
+- Server-proxy `upload()` now validates the real (content-derived) mime + size
+  before writing to disk.
+- `completeUpload()` re-validates the real object's mime + size instead of
+  trusting the client-declared values from `initiateUpload()`.
+- Client filenames are sanitised (basename + slug) before S3-key / storage
+  filename construction, defending against `../` traversal.
+- Share downloads stream via the storage disk for remote (s3) disks instead of
+  `getPath()` / `response()->file()`, which only works for local disks.
+
 ## [1.1.0] - 2026-05-30
 
 ### Added

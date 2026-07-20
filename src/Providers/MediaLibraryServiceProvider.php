@@ -19,9 +19,11 @@ use Kurt\Modules\MediaLibrary\Catalog\Observers\MediaLibraryItemObserver;
 use Kurt\Modules\MediaLibrary\Console\Commands\DemoCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\ExpirePendingUploadsCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\ExpireSharesCommand;
+use Kurt\Modules\MediaLibrary\Console\Commands\PruneAccessLogCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\PruneSharesCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\PruneVariantsCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\PruneVersionsCommand;
+use Kurt\Modules\MediaLibrary\Console\Commands\PurgeSubjectCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\RebuildPathsCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\RecountCommand;
 use Kurt\Modules\MediaLibrary\Console\Commands\ReextractCommand;
@@ -35,7 +37,6 @@ use Kurt\Modules\MediaLibrary\Sharing\Support\AccessLogger;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkResolver;
 use Kurt\Modules\MediaLibrary\Sharing\Support\ShareLinkSigner;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\BlurhashGenerator;
-use Kurt\Modules\MediaLibrary\Storage\Contracts\ExifExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\PaletteExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Support\ConversionEngine;
 use Kurt\Modules\MediaLibrary\Storage\Support\FocalPointCropper;
@@ -68,6 +69,8 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
                 RecountCommand::class,
                 ExpireSharesCommand::class,
                 PruneSharesCommand::class,
+                PruneAccessLogCommand::class,
+                PurgeSubjectCommand::class,
                 ExpirePendingUploadsCommand::class,
                 ReextractCommand::class,
                 ReindexCommand::class,
@@ -88,17 +91,9 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
             return $instance;
         });
 
-        // Optional extractors — only bind when configured
-        $exif = config('media-library.contracts.exif');
-        if (is_string($exif) && $exif !== '') {
-            $this->app->singleton(ExifExtractor::class, function ($app) use ($exif) {
-                /** @var ExifExtractor $instance */
-                $instance = $app->make($exif);
-
-                return $instance;
-            });
-        }
-
+        // Optional extractors — only bind the ones actually consumed at runtime.
+        // blurhash + palette are injected into MetadataExtractor and run on every
+        // image upload; that is the only synchronous extraction the package wires.
         $blurhash = config('media-library.contracts.blurhash');
         if (is_string($blurhash) && $blurhash !== '') {
             $this->app->singleton(BlurhashGenerator::class, function ($app) use ($blurhash) {
@@ -161,6 +156,7 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
                 $schedule->command(ExpirePendingUploadsCommand::class)->everyFiveMinutes();
                 $schedule->command(ExpireSharesCommand::class)->hourly();
                 $schedule->command(PruneSharesCommand::class)->daily();
+                $schedule->command(PruneAccessLogCommand::class)->daily();
                 $schedule->command(PruneVersionsCommand::class)->daily();
                 $schedule->command(PruneVariantsCommand::class)->daily();
             });

@@ -11,9 +11,12 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Exceptions\ReplaceFailed;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryPendingUpload;
 use Kurt\Modules\MediaLibrary\Storage\Models\MediaLibraryVersion;
+use Kurt\Modules\MediaLibrary\Storage\Support\Concerns\HardensUploads;
 
 final class ReplaceCoordinator
 {
+    use HardensUploads;
+
     public function __construct(private readonly MetadataExtractor $extractor) {}
 
     /**
@@ -29,6 +32,19 @@ final class ReplaceCoordinator
         UploadedFile|MediaLibraryPendingUpload $new,
         string $changelog,
     ): MediaLibraryItem {
+        // Validate the REAL (content-derived) mime + size of a proxied upload
+        // BEFORE touching the disk or the transaction, so a replace can never be
+        // used to smuggle a disallowed or oversized file past the same guards the
+        // initial upload enforces. Presigned (MediaLibraryPendingUpload) sources
+        // were already validated at initiate + finalize time by UploadCoordinator.
+        if ($new instanceof UploadedFile) {
+            $realMime = (string) ($new->getMimeType() ?? $new->getClientMimeType());
+            $this->assertMimeAllowed($realMime);
+
+            $realSize = $new->getSize();
+            $this->assertSizeAllowed($realSize === false ? null : (int) $realSize);
+        }
+
         return DB::transaction(function () use ($item, $new, $changelog): MediaLibraryItem {
             $storage = $item->storage;
 
@@ -58,11 +74,13 @@ final class ReplaceCoordinator
             $previousSpatieMediaId = (int) $previousMedia->id;
 
             if ($new instanceof UploadedFile) {
-                $disk = (string) config('media-library.uploads.disk', 'public');
+                // Default to a PRIVATE disk (matches UploadCoordinator); the
+                // share-link controller is the access-controlled read path.
+                $disk = (string) config('media-library.uploads.disk', 'local');
                 $newMedia = $storage
                     ->addMedia($new->getPathname())
                     ->preservingOriginal()
-                    ->usingFileName((string) $new->getClientOriginalName())
+                    ->usingFileName($this->sanitizeFilename((string) $new->getClientOriginalName()))
                     ->toMediaCollection('mli', $disk);
             } else {
                 $payload = $new->driver_payload;

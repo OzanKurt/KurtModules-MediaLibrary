@@ -7,7 +7,6 @@ use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryTag;
 use Kurt\Modules\MediaLibrary\Sharing\Models\ShareLink;
-use Kurt\Modules\MediaLibrary\Storage\Extractors\DefaultExifExtractor;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionBlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor;
 
@@ -15,7 +14,10 @@ return [
     'subject_resolver' => DefaultSubjectResolver::class,
 
     'contracts' => [
-        'exif' => DefaultExifExtractor::class,
+        // Runtime extraction the package actually wires: blurhash + palette run
+        // synchronously on every image upload. ocr / ai_tagger / scout are
+        // pluggable extension points that stay unbound (null) until you supply an
+        // implementation and a job/command to invoke it - nothing runs them for you.
         'blurhash' => InterventionBlurhashGenerator::class,
         'palette' => InterventionPaletteExtractor::class,
         'ocr' => null,
@@ -56,6 +58,11 @@ return [
     'routes' => [
         'share_enabled' => true,
         'share_prefix' => 'media-library/share',
+
+        // Rate limit applied to the public share endpoint, in Laravel's
+        // `throttle` middleware syntax ("max,minutes"). Share tokens are bearer
+        // credentials, so throttling blunts token-guessing / enumeration.
+        'share_throttle' => env('MEDIA_LIBRARY_SHARE_THROTTLE', '60,1'),
     ],
 
     'share_links' => [
@@ -70,6 +77,10 @@ return [
         // invitee before a link that sets `invitee_email` will resolve. Links
         // with a null `invitee_email` stay bearer regardless of this flag.
         'enforce_invitee' => env('MEDIA_LIBRARY_ENFORCE_INVITEE', false),
+
+        // Maximum number of items returned by a folder-share JSON listing. Keeps
+        // a share on a large folder from producing an unbounded response.
+        'folder_listing_limit' => 500,
     ],
 
     'notifications' => [
@@ -77,15 +88,15 @@ return [
         'channels' => ['mail', 'database'],
     ],
 
-    'extractors' => [
-        'sync' => ['dimensions', 'palette', 'blurhash'],   // run in request
-        'async' => ['exif', 'ai_tagger', 'ocr'],            // dispatched as jobs
-    ],
-
     'access_log' => [
         'enabled' => true,
         'on_view' => true,
         'on_download' => true,
+
+        // Access-log retention. `media-library:prune-access-log` hard-deletes
+        // entries older than this many days (GDPR storage-limitation). Set to 0
+        // to disable pruning and keep the log indefinitely.
+        'prune_after_days' => 365,
     ],
 
     'audit' => [

@@ -11,6 +11,7 @@ use Kurt\Modules\MediaLibrary\Catalog\Events\ItemReplaced;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryAttachment;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Contracts\MediaLibraryOwner;
+use Kurt\Modules\MediaLibrary\Exceptions\InvalidUpload;
 use Kurt\Modules\MediaLibrary\Exceptions\ReplaceFailed;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\BlurhashGenerator;
 use Kurt\Modules\MediaLibrary\Storage\Contracts\PaletteExtractor;
@@ -232,4 +233,79 @@ it('throws ReplaceFailed when the storage host has no media to replace', functio
 
     expect(fn () => $replacer->replace($item, $replacement, 'empty'))
         ->toThrow(ReplaceFailed::class);
+});
+
+it('rejects a replace whose real mime type is not allowed', function (): void {
+    Event::fake();
+
+    $item = uploadReplaceableItem('mime-orig.png');
+
+    // Tighten the allow-list AFTER the original upload; the PNG replacement must
+    // now be rejected by the same guard UploadCoordinator enforces.
+    config()->set('media-library.uploads.allowed_mimes', ['application/pdf']);
+
+    $replacement = new UploadedFile(
+        __DIR__.'/../../fixtures/test.png',
+        'still-a-png.png',
+        'image/png',
+        null,
+        true,
+    );
+
+    expect(fn () => (new ReplaceCoordinator(makeMetadataExtractor()))->replace($item, $replacement, 'bad mime'))
+        ->toThrow(InvalidUpload::class);
+});
+
+it('rejects an oversize replace based on the real file size', function (): void {
+    Event::fake();
+
+    $item = uploadReplaceableItem('size-orig.png');
+
+    config()->set('media-library.uploads.allowed_mimes', []);
+    config()->set('media-library.uploads.max_size_kb', 100);
+
+    $replacement = UploadedFile::fake()->create('huge.bin', 500); // 500 KB > 100 KB
+
+    expect(fn () => (new ReplaceCoordinator(makeMetadataExtractor()))->replace($item, $replacement, 'too big'))
+        ->toThrow(InvalidUpload::class);
+});
+
+it('sanitizes a path-traversal filename on replace', function (): void {
+    Event::fake();
+
+    $item = uploadReplaceableItem('trav-orig.png');
+
+    $replacement = new UploadedFile(
+        __DIR__.'/../../fixtures/test.png',
+        '../../etc/passwd.png',
+        'image/png',
+        null,
+        true,
+    );
+
+    $replaced = (new ReplaceCoordinator(makeMetadataExtractor()))->replace($item, $replacement, 'traversal');
+
+    expect($replaced->filename)->toBe('passwd.png');
+    expect($replaced->filename)->not->toContain('..')->not->toContain('/');
+    expect($replaced->spatieMedia()?->file_name)->not->toContain('..')->not->toContain('/');
+});
+
+it('defaults replaced media to the private (local) disk', function (): void {
+    Event::fake();
+    Storage::fake('local');
+    config()->set('media-library.uploads.disk', 'local');
+
+    $item = uploadReplaceableItem('disk-orig.png');
+
+    $replacement = new UploadedFile(
+        __DIR__.'/../../fixtures/test.jpg',
+        'disk-v2.jpg',
+        'image/jpeg',
+        null,
+        true,
+    );
+
+    $replaced = (new ReplaceCoordinator(makeMetadataExtractor()))->replace($item, $replacement, 'private disk');
+
+    expect($replaced->spatieMedia()?->disk)->toBe('local');
 });

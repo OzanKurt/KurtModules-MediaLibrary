@@ -204,6 +204,43 @@ it('moveItems accepts a null folder to move items out of folders', function (): 
     }
 });
 
+it('moveItems keeps source and target folder item_count correct in one transaction', function (): void {
+    Event::fake([FolderMoved::class]);
+    $svc = buildMediaLibrary();
+
+    $owner = makeFacadeOwner(21);
+    $source = $svc->createFolder($owner, 'Source');
+    $target = $svc->createFolder($owner, 'Target');
+
+    $items = MediaLibraryItem::factory()->count(2)->create(['folder_id' => $source->id]);
+    // Seed the source counter to match its real contents.
+    $source->forceFill(['item_count' => 2])->save();
+
+    $moved = $svc->moveItems($items->pluck('id')->all(), $target);
+
+    expect($moved)->toBe(2);
+    expect($source->fresh()?->item_count)->toBe(0);
+    expect($target->fresh()?->item_count)->toBe(2);
+});
+
+it('moveItems scopes the move to the given owner', function (): void {
+    Event::fake([FolderMoved::class]);
+    $svc = buildMediaLibrary();
+
+    $owner = makeFacadeOwner(22);
+    $target = $svc->createFolder($owner, 'Owned Target');
+
+    $mine = MediaLibraryItem::factory()->create(['owner_type' => 'stub_owner', 'owner_id' => 22, 'folder_id' => null]);
+    $theirs = MediaLibraryItem::factory()->create(['owner_type' => 'stub_owner', 'owner_id' => 999, 'folder_id' => null]);
+
+    $moved = $svc->moveItems([$mine->id, $theirs->id], $target, $owner);
+
+    expect($moved)->toBe(1);
+    expect($mine->fresh()?->folder_id)->toBe($target->id);
+    expect($theirs->fresh()?->folder_id)->toBeNull();
+    expect($target->fresh()?->item_count)->toBe(1);
+});
+
 it('trash + restore round-trips an item and dispatches the right events', function (): void {
     Event::fake([ItemTrashed::class, ItemRestored::class]);
     $svc = buildMediaLibrary();
