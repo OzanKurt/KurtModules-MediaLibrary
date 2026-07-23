@@ -6,6 +6,7 @@ namespace Kurt\Modules\MediaLibrary\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Kurt\Modules\Core\Modules\ModuleManifest;
 use Kurt\Modules\Core\Providers\PackageServiceProvider;
 use Kurt\Modules\MediaLibrary\Access\Contracts\MediaSubjectResolver;
 use Kurt\Modules\MediaLibrary\Access\Support\DefaultSubjectResolver;
@@ -57,6 +58,13 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
     protected function module(): string
     {
         return 'media-library';
+    }
+
+    protected function moduleManifest(): ?ModuleManifest
+    {
+        return ModuleManifest::make('media-library')
+            ->name('Media Library')
+            ->description('WordPress-style media bucket for Laravel SaaS: tenant-aware folders, polymorphic attachments, focal-point conversions, replace-with-stable-id, share links, folder ACL.');
     }
 
     public function configurePackage(Package $package): void
@@ -159,6 +167,8 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
+        parent::packageBooted();
+
         MediaLibraryItem::observe(MediaLibraryItemObserver::class);
         MediaLibraryFolder::observe(MediaLibraryFolderObserver::class);
 
