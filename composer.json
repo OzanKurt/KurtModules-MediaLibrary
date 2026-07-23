@@ -36,7 +36,7 @@
   },
   "extra": { "laravel": { "providers": ["Kurt\\Modules\\MediaLibrary\\Providers\\MediaLibraryServiceProvider"] } },
   "repositories": [
-    { "type": "vcs", "url": "https://github.com/OzanKurt/KurtModules-Core" }
+    { "type": "vcs", "url": "https://github.com/OzanKurt/laravel-modules-core" }
   ],
   "config": { "sort-packages": true, "allow-plugins": { "pestphp/pest-plugin": true } },
   "scripts": {
