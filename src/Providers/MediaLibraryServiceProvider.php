@@ -6,12 +6,19 @@ namespace Kurt\Modules\MediaLibrary\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Contracts\Events\Dispatcher;
 use Kurt\Modules\Core\Modules\ModuleManifest;
 use Kurt\Modules\Core\Providers\PackageServiceProvider;
+use Kurt\Modules\Core\Support\ModuleCacheFactory;
 use Kurt\Modules\MediaLibrary\Access\Contracts\MediaSubjectResolver;
+use Kurt\Modules\MediaLibrary\Access\Listeners\FlushAclCache;
+use Kurt\Modules\MediaLibrary\Access\Models\FolderPermission;
+use Kurt\Modules\MediaLibrary\Access\Observers\FolderPermissionObserver;
 use Kurt\Modules\MediaLibrary\Access\Support\DefaultSubjectResolver;
 use Kurt\Modules\MediaLibrary\Access\Support\FolderPermissionResolver;
 use Kurt\Modules\MediaLibrary\Access\Support\MediaLibraryAccess;
+use Kurt\Modules\MediaLibrary\Catalog\Events\FolderMoved;
+use Kurt\Modules\MediaLibrary\Catalog\Events\FolderPermissionChanged;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryFolder;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibraryItem;
 use Kurt\Modules\MediaLibrary\Catalog\Models\MediaLibrarySavedSearch;
@@ -60,7 +67,7 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
         return 'media-library';
     }
 
-    protected function moduleManifest(): ?ModuleManifest
+    protected function moduleManifest(): ModuleManifest
     {
         return ModuleManifest::make('media-library')
             ->name('Media Library')
@@ -150,7 +157,14 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
         // Support services
         $this->app->singleton(MetadataPipeline::class);
         $this->app->singleton(FocalPointCropper::class);
-        $this->app->singleton(FolderPermissionResolver::class);
+
+        // The resolver carries the cross-request ACL cache (L2). MediaLibraryAccess
+        // keeps the per-request memo (L1). The cache honours the `media-library.cache`
+        // block and fails closed to live resolution when disabled or erroring.
+        $this->app->singleton(FolderPermissionResolver::class, static fn ($app): FolderPermissionResolver => new FolderPermissionResolver(
+            $app->make(MediaSubjectResolver::class),
+            $app->make(ModuleCacheFactory::class)->generationalFor('media-library'),
+        ));
         $this->app->scoped(MediaLibraryAccess::class);
         $this->app->singleton(ShareLinkSigner::class);
         $this->app->singleton(ShareLinkResolver::class);
@@ -171,6 +185,17 @@ final class MediaLibraryServiceProvider extends PackageServiceProvider
 
         MediaLibraryItem::observe(MediaLibraryItemObserver::class);
         MediaLibraryFolder::observe(MediaLibraryFolderObserver::class);
+
+        // Emit FolderPermissionChanged on every permission grant/edit/revoke so
+        // the ACL cache is invalidated no matter which write path touched the row.
+        FolderPermission::observe(FolderPermissionObserver::class);
+
+        // Bump the ACL cache scope on the two staleness signals that are not
+        // encoded in the cache key: permission changes and folder moves.
+        /** @var Dispatcher $events */
+        $events = $this->app->make(Dispatcher::class);
+        $events->listen(FolderPermissionChanged::class, FlushAclCache::class);
+        $events->listen(FolderMoved::class, FlushAclCache::class);
 
         /** @var Gate $gate */
         $gate = $this->app->make(Gate::class);
