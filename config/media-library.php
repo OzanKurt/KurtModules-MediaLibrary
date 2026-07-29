@@ -14,6 +14,21 @@ use Kurt\Modules\MediaLibrary\Storage\Extractors\InterventionPaletteExtractor;
 return [
     'subject_resolver' => DefaultSubjectResolver::class,
 
+    // Cross-request cache for the expensive per-folder ACL resolution
+    // (FolderPermissionResolver::highestCapability walks the ancestor chain on
+    // every folder/item view + API call). Wrapped in a generational cache so a
+    // permission change or folder move invalidates the whole ACL keyspace in
+    // O(1). SECURITY: a stale ACL cache would keep access a user has lost, so
+    // the layer fails CLOSED — when disabled or on any cache error it resolves
+    // live, never granting on error. Keep `ttl` short (defence-in-depth for
+    // anything that slips past the bump signals).
+    'cache' => [
+        'enabled' => (bool) env('MEDIA_LIBRARY_CACHE_ENABLED', true),
+        'store' => env('MEDIA_LIBRARY_CACHE_STORE'),
+        'prefix' => 'media-library',
+        'ttl' => (int) env('MEDIA_LIBRARY_CACHE_TTL', 300),
+    ],
+
     'contracts' => [
         // Extractor contract bindings. Each is resolved from the container when
         // set to a class-string and left unbound (skipped gracefully) when null.
