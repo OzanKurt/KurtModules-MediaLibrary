@@ -6,8 +6,8 @@ Wraps `spatie/laravel-medialibrary` as the storage engine.
 
 ## Requirements
 
-- PHP 8.3+
-- Laravel 12.x
+- PHP 8.4+
+- Laravel 13.x
 - `ozankurt/laravel-modules-core` v2.x
 - `spatie/laravel-medialibrary` v11.x
 
