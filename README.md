@@ -1,13 +1,15 @@
 # laravel-modules-media-library
 
+[![tests](https://github.com/OzanKurt/laravel-modules-media-library/actions/workflows/tests.yml/badge.svg)](https://github.com/OzanKurt/laravel-modules-media-library/actions/workflows/tests.yml)
+
 WordPress-style media bucket for Laravel SaaS: tenant-aware folders, polymorphic attachments, focal-point conversions, replace-with-stable-id versioning, share links, folder ACL.
 
 Wraps `spatie/laravel-medialibrary` as the storage engine.
 
 ## Requirements
 
-- PHP 8.4+
-- Laravel 13.x
+- PHP `^8.4`
+- Laravel `^13.0`
 - `ozankurt/laravel-modules-core` v2.x
 - `spatie/laravel-medialibrary` v11.x
 
@@ -215,6 +217,19 @@ This registers four resources:
 
 `filament/filament` is a dev dependency only; the resources load lazily for
 whichever major the consuming app installs.
+
+## Testing
+
+```bash
+composer install
+vendor/bin/pint --test
+vendor/bin/phpstan analyse --memory-limit=2G
+vendor/bin/pest
+```
+
+CI runs the same checks on every push and pull request
+(`.github/workflows/tests.yml`), against PHP 8.4 / Laravel 13. Static analysis
+is held at **PHPStan level 8**; the suite runs on **Pest 5**.
 
 ## License
 
